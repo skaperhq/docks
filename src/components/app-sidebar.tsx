@@ -1,6 +1,8 @@
 "use client"
 
 import type { ApiOperation } from "@/lib/openapi"
+import { Link } from "@tanstack/react-router"
+import { useEnvironment } from "@/components/environment-provider"
 import {
   ArrowLeftRightIcon,
   ChevronRightIcon,
@@ -16,6 +18,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Sidebar,
   SidebarContent,
@@ -49,6 +60,8 @@ export function AppSidebar({
   onSelectOperation,
   ...props
 }: AppSidebarProps) {
+  const { environments, activeEnvironmentId, setActiveEnvironmentId } =
+    useEnvironment()
   const groups = React.useMemo(
     () => getOperationGroups({ query: searchQuery, requestOnly }),
     [searchQuery, requestOnly]
@@ -69,13 +82,39 @@ export function AppSidebar({
           </div>
         </div>
 
+        <SidebarGroup className="mt-2 px-2 py-0">
+          <SidebarGroupContent className="flex flex-col gap-1">
+            <Select
+              value={activeEnvironmentId || ""}
+              onValueChange={setActiveEnvironmentId}
+            >
+              <SelectTrigger
+                className="h-8 w-full text-[13px]"
+                aria-label="Select active environment"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Environments</SelectLabel>
+                  {environments.map((env) => (
+                    <SelectItem key={env.id} value={env.id}>
+                      {env.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <SidebarGroup className="mt-1 px-2 py-1">
           <SidebarGroupContent className="flex flex-col gap-2">
             <label className="relative block">
               <SidebarInput
                 value={searchQuery}
                 onChange={(event) => onSearchQueryChange(event.target.value)}
-                className="bg-sidebar-accent text-sidebar-foreground h-8 rounded-md border-sidebar-border placeholder:text-muted-foreground"
+                className="h-8 rounded-md border-sidebar-border bg-sidebar-accent text-sidebar-foreground placeholder:text-muted-foreground"
                 placeholder="Search requests"
                 aria-label="Search API requests"
               />
@@ -84,12 +123,15 @@ export function AppSidebar({
         </SidebarGroup>
 
         <SidebarGroup className="p-0.5 px-2 pt-1">
-          <button className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-normal text-sidebar-foreground/80 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          <Link
+            to="/environment"
+            className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-normal text-sidebar-foreground/80 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring [&.active]:bg-sidebar-accent [&.active]:font-medium [&.active]:text-sidebar-accent-foreground"
+          >
             <Container className="w-4 text-sidebar-foreground/60" />
             <span className="truncate text-[13px] font-normal">
               Environment
             </span>
-          </button>
+          </Link>
         </SidebarGroup>
 
         <SidebarGroup className="p-0.5 px-2 pt-0">
@@ -104,9 +146,7 @@ export function AppSidebar({
               >
                 <ChevronRightIcon className="w-4 transition-transform" />
                 <ArrowLeftRightIcon className="w-4 text-sidebar-foreground/60" />
-                <span className="truncate text-[13px] font-normal">
-                  Rest
-                </span>
+                <span className="truncate text-[13px] font-normal">Rest</span>
                 <span className="ml-auto text-[10px] text-sidebar-foreground/60 tabular-nums">
                   {endpointCount}
                 </span>
@@ -223,4 +263,3 @@ function getMethodClassName(method: ApiOperation["method"]) {
       return "text-sidebar-foreground/60"
   }
 }
-

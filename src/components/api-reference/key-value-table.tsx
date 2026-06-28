@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import type { KeyValueRow } from "./types"
 import {
@@ -112,11 +113,10 @@ function EditableKeyValueRow({
     <TableRow className="border-border hover:bg-transparent">
       <TableCell className="h-8.5 border-r border-border px-0 py-0 text-center">
         {isPlaceholder ? null : (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={row.enabled !== false}
-            onChange={(event) => onChange({ enabled: event.target.checked })}
-            className="size-4 rounded-sm accent-primary"
+            onCheckedChange={(checked) => onChange({ enabled: checked === true })}
+            className="mx-auto"
             aria-label={`Enable ${row.key || "row"}`}
           />
         )}

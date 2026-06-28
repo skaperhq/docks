@@ -4,6 +4,7 @@ import { TanStackDevtools } from "@tanstack/react-devtools"
 
 import appCss from "../styles.css?url"
 import { ThemeProvider } from "../components/theme-provider"
+import { EnvironmentProvider } from "../components/environment-provider"
 
 export const Route = createRootRoute({
   head: () => ({
@@ -54,7 +55,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          {children}
+          <EnvironmentProvider>
+            {children}
+          </EnvironmentProvider>
         </ThemeProvider>
         <TanStackDevtools
           config={{

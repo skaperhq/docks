@@ -1,5 +1,6 @@
 import * as React from "react"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useEnvironment } from "@/components/environment-provider"
 import { LockIcon } from "lucide-react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Button } from "@/components/ui/button"
@@ -23,26 +24,48 @@ import {
   getBgMethodClassName,
 } from "@/components/api-reference/utils"
 
-export const Route = createFileRoute("/")({ component: App })
+export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      operationId: typeof search.operationId === "string" ? search.operationId : undefined,
+    }
+  },
+  component: App,
+})
 
 const defaultOperation =
   apiOperations.find((operation) => operation.id === "POST /auth/login") ??
   apiOperations[0]
 
 function App() {
+  const { operationId } = Route.useSearch()
+  const navigate = useNavigate()
+  const { activeEnvironment, resolveVariables } = useEnvironment()
+
   const [searchQuery, setSearchQuery] = React.useState("")
   const [requestOnly, setRequestOnly] = React.useState(false)
-  const [selectedOperationId, setSelectedOperationId] = React.useState(
-    defaultOperation.id
-  )
+  const selectedOperationId = operationId || defaultOperation.id
   const selectedOperation =
     apiOperations.find((operation) => operation.id === selectedOperationId) ??
     defaultOperation
+
   const requestUrl = selectedOperation.requestUrl
-  const headers = React.useMemo(
+  const resolvedBaseUrl = activeEnvironment ? activeEnvironment.baseUrl : ""
+  const fullRequestUrl = resolvedBaseUrl
+    ? `${resolvedBaseUrl.replace(/\/$/, "")}/${requestUrl.replace(/^\//, "")}`
+    : requestUrl
+
+  const rawHeaders = React.useMemo(
     () => getHeaderRows(selectedOperation),
     [selectedOperation]
   )
+
+  const headers = React.useMemo(() => {
+    return rawHeaders.map((header) => ({
+      ...header,
+      value: resolveVariables(header.value),
+    }))
+  }, [rawHeaders, resolveVariables])
 
   return (
     <SidebarProvider>
@@ -52,12 +75,14 @@ function App() {
         requestOnly={requestOnly}
         onSearchQueryChange={setSearchQuery}
         onRequestOnlyChange={setRequestOnly}
-        onSelectOperation={(operation) => setSelectedOperationId(operation.id)}
+        onSelectOperation={(operation) => {
+          navigate({ to: "/", search: { operationId: operation.id } })
+        }}
       />
-      <SidebarInset className="min-h-svh overflow-hidden bg-background text-foreground">
+      <SidebarInset className="h-svh overflow-hidden bg-background text-foreground">
         <RequestTabStrip operation={selectedOperation} />
-        <main className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-border px-8 py-6">
+        <ScrollArea className="flex-1 min-h-0 w-full">
+          <main className="flex flex-col px-8 pt-6 pb-[calc(52svh+4rem)]">
             <div className="mb-4 flex items-center gap-1 text-[13px] text-muted-foreground">
               <span className="truncate">{apiInfo.title}</span>
               <span>/</span>
@@ -86,7 +111,7 @@ function App() {
                 </div>
 
                 <div className="flex h-full min-w-0 items-center truncate rounded-none border-0 bg-transparent px-4 text-[15px] text-foreground shadow-none">
-                  {requestUrl}
+                  {fullRequestUrl}
                 </div>
               </div>
               <div className="grid grid-cols-[1fr_1fr] gap-3">
@@ -98,7 +123,7 @@ function App() {
 
             <Tabs
               defaultValue="Docs"
-              className="mt-4 flex min-h-0 w-full flex-col"
+              className="mt-4 flex w-full flex-col"
             >
               <TabsList>
                 {requestTabs.map((tab) => (
@@ -112,20 +137,17 @@ function App() {
                 ))}
               </TabsList>
               {requestTabs.map((tab) => (
-                <TabsContent key={tab} value={tab} className="mt-4 min-h-0">
-                  <ScrollArea className="h-[calc(100svh-15.5rem)] pr-4">
-                    <RequestTabContent
-                      activeTab={tab}
-                      operation={selectedOperation}
-                      headers={headers}
-                    />
-                    <ScrollBar orientation="horizontal" />
-                  </ScrollArea>
+                <TabsContent key={tab} value={tab} className="mt-4">
+                  <RequestTabContent
+                    activeTab={tab}
+                    operation={selectedOperation}
+                    headers={headers}
+                  />
                 </TabsContent>
               ))}
             </Tabs>
-          </div>
-        </main>
+          </main>
+        </ScrollArea>
         <ResponseBar operation={selectedOperation} />
       </SidebarInset>
     </SidebarProvider>
