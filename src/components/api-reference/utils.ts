@@ -1,0 +1,130 @@
+import type { ApiOperation, ApiParameter } from "@/lib/openapi"
+import type { KeyValueRow } from "./types"
+
+export function parameterToRow(parameter: ApiParameter): KeyValueRow {
+  return {
+    key: parameter.name,
+    value:
+      parameter.defaultValue ??
+      (parameter.location === "path" ? `{{${parameter.name}}}` : ""),
+    description: parameter.description ?? "",
+    required: parameter.required,
+    type: parameter.type,
+    location: parameter.location,
+    defaultValue: parameter.defaultValue,
+    enum: parameter.enum,
+    pattern: parameter.pattern,
+    minimum: parameter.minimum,
+    maximum: parameter.maximum,
+    minLength: parameter.minLength,
+    maxLength: parameter.maxLength,
+    example: parameter.example,
+  }
+}
+
+export function getHeaderRows(operation: ApiOperation): KeyValueRow[] {
+  const rows: KeyValueRow[] = []
+
+  if (operation.hasAuth) {
+    rows.push({
+      key: "Authorization",
+      value: "Bearer {{access_token}}",
+      description: "Generated from bearerAuth security",
+    })
+  }
+
+  if (operation.requestContentTypes[0]) {
+    rows.push({
+      key: "Content-Type",
+      value: operation.requestContentTypes[0],
+      description: "Generated from request body content type",
+    })
+  }
+
+  for (const parameter of operation.headerParameters) {
+    rows.push(parameterToRow(parameter))
+  }
+
+  return rows
+}
+
+export function getMethodClassName(method: ApiOperation["method"]) {
+  switch (method) {
+    case "GET":
+      return "text-emerald-600 dark:text-[#6bdd9a]"
+    case "POST":
+      return "text-amber-600 dark:text-[#f5d36b]"
+    case "PUT":
+    case "PATCH":
+      return "text-blue-600 dark:text-[#74aef6]"
+    case "DELETE":
+      return "text-rose-600 dark:text-[#ff8d7a]"
+    default:
+      return "text-muted-foreground"
+  }
+}
+
+export function getBgMethodClassName(method: ApiOperation["method"]) {
+  switch (method) {
+    case "GET":
+      return "bg-emerald-50 dark:bg-[#003415]"
+    case "POST":
+      return "bg-amber-50 dark:bg-[#3a2b00]"
+    case "PUT":
+    case "PATCH":
+      return "bg-blue-50 dark:bg-[#00274d]"
+    case "DELETE":
+      return "bg-rose-50 dark:bg-[#4d1a00]"
+    default:
+      return "bg-muted"
+  }
+}
+
+export function formatBodyExample(example: unknown) {
+  if (example === null || example === undefined) {
+    return ""
+  }
+
+  if (typeof example === "string") {
+    return example
+  }
+
+  return JSON.stringify(example, null, 2)
+}
+
+export function prettyPrintJson(value: string) {
+  if (!value.trim()) {
+    return value
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
+}
+
+export function shouldCreateRow(patch: Partial<KeyValueRow>) {
+  return Boolean(
+    patch.key?.trim() || patch.value?.trim() || patch.description?.trim()
+  )
+}
+
+export function normalizeKeyValueRow(row: KeyValueRow): KeyValueRow {
+  return {
+    ...row,
+    enabled: row.enabled ?? true,
+    value: row.value,
+    description: row.description,
+  }
+}
+
+export const emptyKeyValueRow: KeyValueRow = {
+  key: "",
+  value: "",
+  description: "",
+  enabled: true,
+}
+
+export const leanCellInputClassName =
+  "h-8.5 rounded-none border-0 bg-transparent px-4 font-sans text-[12px] text-foreground shadow-none focus-visible:ring-0 focus-visible:border-0 placeholder:text-muted-foreground/55"
