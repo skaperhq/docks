@@ -21,42 +21,31 @@ import {
 export function KeyValueTable({
   title,
   rows,
-  resetKey,
+  onRowsChange,
   emptyMessage,
 }: {
   title: string
   rows: KeyValueRow[]
-  resetKey: string
   badge?: string
   emptyMessage: string
+  onRowsChange: (rows: KeyValueRow[]) => void
 }) {
-  const [tableRows, setTableRows] = React.useState<KeyValueRow[]>(() =>
-    rows.map(normalizeKeyValueRow)
-  )
-
-  React.useEffect(() => {
-    setTableRows(rows.map(normalizeKeyValueRow))
-  }, [resetKey, rows])
-
   function updateRow(index: number, patch: Partial<KeyValueRow>) {
-    setTableRows((currentRows) =>
-      index >= currentRows.length
+    const nextRows =
+      index >= rows.length
         ? shouldCreateRow(patch)
-          ? [
-              ...currentRows,
-              normalizeKeyValueRow({ ...emptyKeyValueRow, ...patch }),
-            ]
-          : currentRows
-        : currentRows.map((row, rowIndex) =>
+          ? [...rows, normalizeKeyValueRow({ ...emptyKeyValueRow, ...patch })]
+          : rows
+        : rows.map((row, rowIndex) =>
             rowIndex === index ? { ...row, ...patch } : row
           )
-    )
+
+    if (nextRows !== rows) {
+      onRowsChange(nextRows)
+    }
   }
 
-  const visibleRows = React.useMemo(
-    () => [...tableRows, emptyKeyValueRow],
-    [tableRows]
-  )
+  const visibleRows = React.useMemo(() => [...rows, emptyKeyValueRow], [rows])
 
   return (
     <section className="flex flex-col gap-3">
@@ -87,9 +76,9 @@ export function KeyValueTable({
           <TableBody>
             {visibleRows.map((row, index) => (
               <EditableKeyValueRow
-                key={`${title}-${resetKey}-${index}`}
+                key={`${title}-${index}`}
                 row={row}
-                isPlaceholder={index === tableRows.length}
+                isPlaceholder={index === rows.length}
                 onChange={(patch) => updateRow(index, patch)}
               />
             ))}

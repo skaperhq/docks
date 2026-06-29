@@ -104,37 +104,14 @@ function EnvironmentPage() {
 
   const handleDuplicateEnv = (env: (typeof environments)[0]) => {
     setSaveStatus("saving")
-    const newId = Math.random().toString(36).substring(2, 9)
-    const duplicatedEnv = {
-      ...env,
-      id: newId,
-      name: `${env.name} Copy`,
-      variables: env.variables.map((v) => ({
-        ...v,
-        id: Math.random().toString(36).substring(2, 9),
-      })),
-    }
-    // Directly add via updating environments list is handled inside provider or we can use provider methods.
-    // Let's add a new environment first then update it
-    addEnvironment(duplicatedEnv.name, duplicatedEnv.baseUrl)
-    // Wait for the new environment to be added, then copy variables over
+    const newVariables = env.variables.map((v) => ({
+      ...v,
+      id: Math.random().toString(36).substring(2, 9),
+    }))
+    addEnvironment(`${env.name} Copy`, env.baseUrl, newVariables)
     setTimeout(() => {
-      // Find the last environment in the list (which will be the newly created one)
-      // and update its variables
-      const stored = localStorage.getItem("skaper-environments")
-      if (stored) {
-        try {
-          const list = JSON.parse(stored)
-          const lastItem = list[list.length - 1]
-          if (lastItem) {
-            updateEnvironment(lastItem.id, {
-              variables: duplicatedEnv.variables,
-            })
-          }
-        } catch {}
-      }
       setSaveStatus("saved")
-    }, 100)
+    }, 200)
   }
 
   return (

@@ -1,11 +1,9 @@
-import * as React from "react"
 import type { ApiOperation } from "@/lib/openapi"
-import type { RequestTab, KeyValueRow } from "./types"
+import type { RequestTab, KeyValueRow, RequestBodyDraft } from "./types"
 import { DocsPanel } from "./docs-panel"
 import { KeyValueTable } from "./key-value-table"
 import { AuthorizationPanel } from "./authorization-panel"
 import { BodyPanel } from "./body-panel"
-import { parameterToRow } from "./utils"
 
 export const requestTabs: RequestTab[] = [
   "Docs",
@@ -18,19 +16,22 @@ export const requestTabs: RequestTab[] = [
 export function RequestTabContent({
   activeTab,
   operation,
+  params,
+  onParamsChange,
   headers,
+  onHeadersChange,
+  body,
+  onBodyChange,
 }: {
   activeTab: RequestTab
   operation: ApiOperation
+  params: KeyValueRow[]
+  onParamsChange: (rows: KeyValueRow[]) => void
   headers: KeyValueRow[]
+  onHeadersChange: (rows: KeyValueRow[]) => void
+  body: RequestBodyDraft
+  onBodyChange: (body: RequestBodyDraft) => void
 }) {
-  const parameterRows = React.useMemo(
-    () => [
-      ...operation.pathParameters.map(parameterToRow),
-      ...operation.queryParameters.map(parameterToRow),
-    ],
-    [operation]
-  )
 
   switch (activeTab) {
     case "Docs":
@@ -39,8 +40,8 @@ export function RequestTabContent({
       return (
         <KeyValueTable
           title="Query Params"
-          resetKey={operation.id}
-          rows={parameterRows}
+          rows={params}
+          onRowsChange={onParamsChange}
           emptyMessage="This request does not define path or query params."
         />
       )
@@ -50,8 +51,8 @@ export function RequestTabContent({
       return (
         <KeyValueTable
           title="Headers"
-          resetKey={operation.id}
           rows={headers}
+          onRowsChange={onHeadersChange}
           badge={
             headers.length > 1 ? `${headers.length - 1} hidden` : undefined
           }
@@ -59,7 +60,13 @@ export function RequestTabContent({
         />
       )
     case "Body":
-      return <BodyPanel operation={operation} />
+      return (
+        <BodyPanel
+          operation={operation}
+          body={body}
+          onBodyChange={onBodyChange}
+        />
+      )
   }
 }
 

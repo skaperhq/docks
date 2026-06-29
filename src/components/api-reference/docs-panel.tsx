@@ -31,17 +31,17 @@ import { cn } from "@/lib/utils"
 
 export function DocsPanel({ operation }: { operation: ApiOperation }) {
   return (
-    <section className="flex max-w-6xl flex-col gap-6">
+    <section className="flex max-w-6xl flex-col gap-1">
       <div>
-        <p className="mt-2 text-sm leading-6 text-[#a5a5a5]">
+        <p className="text-sm leading-6 text-foreground/90">
           {operation.description ?? operation.summary}
         </p>
       </div>
       <div className="overflow-hidden rounded-sm">
-        <div className="py-3">
-          <h3 className="text-base font-normal tracking-normal text-[#d6d6d6]">
+        <div className="py-2 pt-0">
+          <h6 className="mt-3 text-[13px] font-normal tracking-normal text-foreground/70">
             Responses
-          </h3>
+          </h6>
         </div>
         <Accordion
           type="multiple"
