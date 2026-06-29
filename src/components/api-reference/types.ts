@@ -1,4 +1,5 @@
-export type RequestTab = "Docs" | "Params" | "Authorization" | "Headers" | "Body"
+export type RequestTab =
+  "Docs" | "Params" | "Authorization" | "Headers" | "Body"
 
 export type KeyValueRow = {
   key: string
@@ -46,6 +47,20 @@ export type ResponseResult = {
   headers: ResponseHeader[]
   cookies: ResponseHeader[]
   url: string
+}
+
+export type SavedResponseSummary = {
+  id: string
+  operationId: string
+  method: string
+  path: string
+  name: string
+  status: number
+  ok: boolean
+  durationMs: number
+  sizeBytes: number
+  contentType: string
+  createdAt: string
 }
 
 export type ResponseState =

@@ -120,11 +120,16 @@ function EnvironmentPage() {
         selectedOperationId=""
         searchQuery={searchQuery}
         requestOnly={requestOnly}
+        savedResponses={[]}
         onSearchQueryChange={setSearchQuery}
         onRequestOnlyChange={setRequestOnly}
         onSelectOperation={(operation) => {
           navigate({ to: "/", search: { operationId: operation.id } })
         }}
+        onSelectSavedResponse={(response) => {
+          navigate({ to: "/", search: { operationId: response.operationId } })
+        }}
+        onDeleteSavedResponse={() => {}}
       />
       <SidebarInset className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
         {/* Header */}

@@ -29,4 +29,34 @@ db.exec(`
     description TEXT,
     FOREIGN KEY(environment_id) REFERENCES environments(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS api_request_tabs (
+    operation_id TEXT PRIMARY KEY,
+    request_tab TEXT NOT NULL DEFAULT 'Docs',
+    draft_json TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS api_workspace_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS saved_responses (
+    id TEXT PRIMARY KEY,
+    operation_id TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    ok INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    content_type TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `)

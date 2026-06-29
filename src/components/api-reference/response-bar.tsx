@@ -1,20 +1,36 @@
 import {
   BracesIcon,
-  Clock3Icon,
   CopyIcon,
-  GlobeIcon,
   LinkIcon,
-  MoreHorizontalIcon,
+  LockIcon,
+  SaveIcon,
   SearchIcon,
   WrapTextIcon,
 } from "lucide-react"
+import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ResponseHeader, ResponseState } from "./types"
 import { prettyPrintJson } from "./utils"
 
-export function ResponseBar({ response }: { response: ResponseState }) {
+export function ResponseBar({
+  response,
+  height,
+  onHeightChange,
+  onHeightCommit,
+  onSaveResponse,
+  saveDisabled = false,
+  isResponseSaved = false,
+}: {
+  response: ResponseState
+  height: number
+  onHeightChange: (height: number) => void
+  onHeightCommit: (height: number) => void
+  onSaveResponse: () => void
+  saveDisabled?: boolean
+  isResponseSaved?: boolean
+}) {
   const result = response.status === "success" ? response.result : undefined
   const isLoading = response.status === "loading"
   const error = response.status === "error" ? response.error : undefined
@@ -24,11 +40,41 @@ export function ResponseBar({ response }: { response: ResponseState }) {
       ? JSON.stringify({ error }, null, 2)
       : ""
 
+  function handleResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault()
+
+    const startY = event.clientY
+    const startHeight = height
+
+    function handlePointerMove(moveEvent: PointerEvent) {
+      const nextHeight = clampHeight(startHeight + startY - moveEvent.clientY)
+      onHeightChange(nextHeight)
+    }
+
+    function handlePointerUp(upEvent: PointerEvent) {
+      const nextHeight = clampHeight(startHeight + startY - upEvent.clientY)
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+      onHeightCommit(nextHeight)
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
+  }
+
   return (
     <Tabs
       defaultValue="Body"
-      className="h-[42svh] shrink-0 gap-0 border-t border-border bg-background text-foreground"
+      style={{ height }}
+      className="relative shrink-0 gap-0 border-t border-border bg-background text-foreground"
     >
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize response panel"
+        onPointerDown={handleResizePointerDown}
+        className="absolute inset-x-0 top-0 z-10 h-2 -translate-y-1 cursor-row-resize touch-none"
+      />
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-2">
         <div className="flex h-full items-center gap-7">
           <TabsList variant="default">
@@ -48,6 +94,26 @@ export function ResponseBar({ response }: { response: ResponseState }) {
         </div>
 
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-8 gap-2 rounded-md px-3"
+            onClick={onSaveResponse}
+            disabled={!result || saveDisabled || isResponseSaved}
+            aria-label={
+              isResponseSaved ? "Response already saved" : "Save response"
+            }
+            title={
+              isResponseSaved ? "This response is already saved" : undefined
+            }
+          >
+            {isResponseSaved ? (
+              <LockIcon className="size-4" />
+            ) : (
+              <SaveIcon className="size-4" />
+            )}
+            {isResponseSaved ? "Saved" : "Save"}
+          </Button>
           {isLoading ? (
             <span className="rounded-md bg-blue-500/10 px-3 py-1 font-normal text-blue-500">
               Sending...
@@ -79,8 +145,8 @@ export function ResponseBar({ response }: { response: ResponseState }) {
         </div>
       </div>
 
-      <div className="h-[calc(42svh-3rem)]">
-        <TabsContent value="Body" className="m-0 h-full">
+      <div className="min-h-0 flex-1">
+        <TabsContent value="Body" className="m-0 flex h-full flex-col">
           <ResponseBodyToolbar contentType={result?.contentType} />
           <ResponseCodeView
             text={
@@ -117,22 +183,18 @@ function ResponseBodyToolbar({ contentType }: { contentType?: string }) {
           {contentType?.includes("json") ? "JSON" : "Text"}
         </Button>
       </div>
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="size-8">
-          <WrapTextIcon className="size-5" />
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" className="size-6">
+          <WrapTextIcon className="size-4" />
           <span className="sr-only">Toggle line wrap</span>
         </Button>
-        <Button variant="ghost" size="icon" className="size-8">
-          <SearchIcon className="size-5" />
+        <Button variant="ghost" size="icon" className="size-6">
+          <SearchIcon className="size-4" />
           <span className="sr-only">Search response</span>
         </Button>
-        <Button variant="ghost" size="icon" className="size-8">
-          <CopyIcon className="size-5" />
+        <Button variant="ghost" size="icon" className="size-6">
+          <CopyIcon className="size-4" />
           <span className="sr-only">Copy response</span>
-        </Button>
-        <Button variant="ghost" size="icon" className="size-8">
-          <LinkIcon className="size-5" />
-          <span className="sr-only">Copy response link</span>
         </Button>
       </div>
     </div>
@@ -143,7 +205,7 @@ function ResponseCodeView({ text }: { text: string }) {
   const lines = text.split("\n")
 
   return (
-    <ScrollArea className="h-[calc(42svh-5.75rem)]">
+    <ScrollArea className="min-h-0 flex-1">
       <div className="grid grid-cols-[5rem_minmax(0,1fr)] px-7 text-sm leading-7">
         {lines.map((line, index) => (
           <Line key={`${index}-${line}`} line={line} number={index + 1} />
@@ -230,4 +292,10 @@ function statusLabel(status: number) {
   if (status >= 400 && status < 500) return "Client Error"
   if (status >= 500) return "Server Error"
   return "Response"
+}
+
+function clampHeight(height: number) {
+  const maxHeight =
+    typeof window === "undefined" ? 720 : Math.round(window.innerHeight * 0.75)
+  return Math.min(Math.max(height, 220), Math.max(maxHeight, 220))
 }
