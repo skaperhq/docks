@@ -96,7 +96,7 @@ export function EnvironmentProvider({
   >(null)
   const [loading, setLoading] = React.useState(true)
 
-  // Load initial data and migrate from localStorage if needed
+  // Load initial data and migrate any legacy localStorage environments.
   React.useEffect(() => {
     async function loadData() {
       try {
@@ -113,13 +113,13 @@ export function EnvironmentProvider({
               const parsedEnvs = JSON.parse(storedEnvs) as Environment[]
               if (parsedEnvs.length > 0) {
                 await bulkSyncEnvironments({ data: parsedEnvs })
-                // Refetch to get fresh SQLite database data
+                // Refetch to get fresh IndexedDB data.
                 envs = await getEnvironments()
                 localStorage.removeItem("skaper-environments")
               }
             } catch (err) {
               console.error(
-                "Failed to migrate localStorage environments to SQLite:",
+                "Failed to migrate localStorage environments to IndexedDB:",
                 err
               )
             }
@@ -140,14 +140,14 @@ export function EnvironmentProvider({
           const hasActive = envs.some((env) => env.id === activeId)
           setActiveEnvironmentIdState(hasActive ? activeId : envs[0].id)
         } else {
-          // If SQLite DB is empty, seed it with DEFAULT_ENVIRONMENTS
+          // If browser storage is empty, seed it with DEFAULT_ENVIRONMENTS.
           await bulkSyncEnvironments({ data: DEFAULT_ENVIRONMENTS })
           const seeded = await getEnvironments()
           setEnvironments(seeded)
           setActiveEnvironmentIdState(seeded[0]?.id || "dev")
         }
       } catch (err) {
-        console.error("Failed to load environments from SQLite:", err)
+        console.error("Failed to load environments from IndexedDB:", err)
       } finally {
         setLoading(false)
       }
@@ -193,7 +193,6 @@ export function EnvironmentProvider({
         localStorage.setItem("skaper-active-environment-id", newEnv.id)
       }
 
-      // Save to SQLite asynchronously
       saveEnvironmentServer({
         data: {
           id: newEnv.id,
@@ -210,7 +209,7 @@ export function EnvironmentProvider({
           return Promise.all(promises)
         })
         .catch((err) =>
-          console.error("Failed to save new environment to SQLite:", err)
+          console.error("Failed to save new environment to IndexedDB:", err)
         )
     },
     []
@@ -230,9 +229,8 @@ export function EnvironmentProvider({
         return filtered
       })
 
-      // Delete in SQLite asynchronously
       deleteEnvironmentServer({ data: id }).catch((err) =>
-        console.error("Failed to delete environment from SQLite:", err)
+        console.error("Failed to delete environment from IndexedDB:", err)
       )
     },
     [activeEnvironmentId]
@@ -254,16 +252,15 @@ export function EnvironmentProvider({
                 baseUrl: updatedEnv.baseUrl,
               },
             }).catch((err) =>
-              console.error("Failed to update environment in SQLite:", err)
+              console.error("Failed to update environment in IndexedDB:", err)
             )
           }
           if (updates.variables !== undefined) {
-            // Save updated/duplicated variables to SQLite
             for (const v of updates.variables) {
               saveVariableServer({
                 data: { envId: updatedEnv.id, variable: v },
               }).catch((err) =>
-                console.error("Failed to save variable in SQLite:", err)
+                console.error("Failed to save variable in IndexedDB:", err)
               )
             }
           }
@@ -293,7 +290,7 @@ export function EnvironmentProvider({
     saveVariableServer({
       data: { envId, variable: newVar },
     }).catch((err) =>
-      console.error("Failed to save new variable to SQLite:", err)
+      console.error("Failed to save new variable to IndexedDB:", err)
     )
   }, [])
 
@@ -309,7 +306,7 @@ export function EnvironmentProvider({
     deleteVariableServer({
       data: { envId, varId },
     }).catch((err) =>
-      console.error("Failed to delete variable from SQLite:", err)
+      console.error("Failed to delete variable from IndexedDB:", err)
     )
   }, [])
 
@@ -324,7 +321,7 @@ export function EnvironmentProvider({
             saveVariableServer({
               data: { envId, variable: updatedVar },
             }).catch((err) =>
-              console.error("Failed to update variable in SQLite:", err)
+              console.error("Failed to update variable in IndexedDB:", err)
             )
             return updatedVar
           })
@@ -387,7 +384,7 @@ export function EnvironmentProvider({
       <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-foreground">
         <div className="flex flex-col items-center gap-2">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Loading environment database...</span>
+          <span>Loading browser storage...</span>
         </div>
       </div>
     )

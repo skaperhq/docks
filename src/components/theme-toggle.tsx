@@ -1,51 +1,61 @@
 import { Monitor, Moon, Sun } from "lucide-react"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
 
   return (
-    <div className="flex w-full items-center gap-1 rounded-md bg-muted/50 p-1 border border-border">
-      <button
+    <div className="flex w-full items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => setTheme("light")}
+        aria-pressed={theme === "light"}
         className={cn(
-          "flex flex-1 items-center justify-center gap-2 rounded-sm py-1.5 px-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+          "flex-1 px-3 text-xs",
           theme === "light"
             ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            : "text-muted-foreground"
         )}
         title="Light Mode"
       >
         <Sun className="size-4 shrink-0" />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => setTheme("dark")}
+        aria-pressed={theme === "dark"}
         className={cn(
-          "flex flex-1 items-center justify-center gap-2 rounded-sm py-1.5 px-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+          "flex-1 px-3 text-xs",
           theme === "dark"
             ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            : "text-muted-foreground"
         )}
         title="Dark Mode"
       >
         <Moon className="size-4 shrink-0" />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => setTheme("system")}
+        aria-pressed={theme === "system"}
         className={cn(
-          "flex flex-1 items-center justify-center gap-2 rounded-sm py-1.5 px-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+          "flex-1 px-3 text-xs",
           theme === "system"
             ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            : "text-muted-foreground"
         )}
         title="System Preference"
       >
         <Monitor className="size-4 shrink-0" />
-      </button>
+      </Button>
     </div>
   )
 }

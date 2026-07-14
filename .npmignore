@@ -1,0 +1,15 @@
+.DS_Store
+.cta.json
+.env*
+.tanstack
+.wrangler
+.output
+.vinxi
+__unconfig*
+dist
+node_modules
+todos.json
+*.local
+*.tsbuildinfo
+src/**/*.test.ts
+src/**/*.test.tsx

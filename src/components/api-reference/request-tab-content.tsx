@@ -1,41 +1,41 @@
 import type { ApiOperation } from "@/lib/openapi"
 import type { RequestTab, KeyValueRow, RequestBodyDraft } from "./types"
-import { DocsPanel } from "./docs-panel"
+import { CurlExample, DocsPanel } from "./docs-panel"
 import { KeyValueTable } from "./key-value-table"
-import { AuthorizationPanel } from "./authorization-panel"
 import { BodyPanel } from "./body-panel"
 
-export const requestTabs: RequestTab[] = [
-  "Docs",
-  "Params",
-  "Authorization",
-  "Headers",
-  "Body",
-]
+export const requestTabs: RequestTab[] = ["Docs", "Params", "Headers", "Body"]
 
 export function RequestTabContent({
   activeTab,
   operation,
+  requestId,
   params,
   onParamsChange,
   headers,
   onHeadersChange,
   body,
   onBodyChange,
+  curlCommand,
 }: {
   activeTab: RequestTab
-  operation: ApiOperation
+  operation?: ApiOperation
+  requestId?: string
   params: KeyValueRow[]
   onParamsChange: (rows: KeyValueRow[]) => void
   headers: KeyValueRow[]
   onHeadersChange: (rows: KeyValueRow[]) => void
   body: RequestBodyDraft
   onBodyChange: (body: RequestBodyDraft) => void
+  curlCommand?: string
 }) {
-
   switch (activeTab) {
     case "Docs":
-      return <DocsPanel operation={operation} />
+      return operation ? (
+        <DocsPanel operation={operation} curlCommand={curlCommand} />
+      ) : (
+        <CustomDocsPanel curlCommand={curlCommand} />
+      )
     case "Params":
       return (
         <KeyValueTable
@@ -45,8 +45,6 @@ export function RequestTabContent({
           emptyMessage="This request does not define path or query params."
         />
       )
-    case "Authorization":
-      return <AuthorizationPanel operation={operation} />
     case "Headers":
       return (
         <KeyValueTable
@@ -63,6 +61,7 @@ export function RequestTabContent({
       return (
         <BodyPanel
           operation={operation}
+          requestId={requestId}
           body={body}
           onBodyChange={onBodyChange}
         />
@@ -76,7 +75,7 @@ export function RequestTabLabel({
   headers,
 }: {
   tab: RequestTab
-  operation: ApiOperation
+  operation?: ApiOperation
   headers: KeyValueRow[]
 }) {
   if (tab === "Headers" && headers.length > 0) {
@@ -87,7 +86,7 @@ export function RequestTabLabel({
     )
   }
 
-  if (tab === "Body" && operation.requestContentTypes.length > 0) {
+  if (tab === "Body" && operation && operation.requestContentTypes.length > 0) {
     return (
       <span className="inline-flex items-center gap-2">
         Body
@@ -97,4 +96,22 @@ export function RequestTabLabel({
   }
 
   return tab
+}
+
+function CustomDocsPanel({ curlCommand }: { curlCommand?: string }) {
+  return (
+    <section className="flex min-h-64 flex-col gap-5 rounded-sm border border-dashed border-border bg-muted/20 p-8 text-sm text-muted-foreground">
+      <div>
+        <h2 className="mb-2 text-base font-medium text-foreground">
+          Custom request
+        </h2>
+        <p>
+          This request was created in the workspace and is not generated from
+          the OpenAPI document. Configure params, headers, and body manually
+          before testing it.
+        </p>
+      </div>
+      {curlCommand ? <CurlExample command={curlCommand} /> : null}
+    </section>
+  )
 }

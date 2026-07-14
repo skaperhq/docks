@@ -1,5 +1,4 @@
-export type RequestTab =
-  "Docs" | "Params" | "Authorization" | "Headers" | "Body"
+export type RequestTab = "Docs" | "Params" | "Headers" | "Body"
 
 export type KeyValueRow = {
   key: string
@@ -16,13 +15,17 @@ export type KeyValueRow = {
   maximum?: number
   minLength?: number
   maxLength?: number
-  example?: unknown
+  example?: any
 }
 
 export type RequestBodyDraft = {
   mode: string
   contentType: string
   value: string
+  formDataRows?: KeyValueRow[]
+  urlEncodedRows?: KeyValueRow[]
+  binaryFileName?: string
+  binaryFile?: Blob
 }
 
 export type RequestDraft = {
@@ -47,6 +50,22 @@ export type ResponseResult = {
   headers: ResponseHeader[]
   cookies: ResponseHeader[]
   url: string
+}
+
+export type SavedRequestSnapshot = {
+  method: string
+  transport: "http" | "websocket"
+  mode: "standard" | "sse"
+  url: string
+  params: KeyValueRow[]
+  headers: KeyValueRow[]
+  body: RequestBodyDraft
+  environment: {
+    id?: string
+    name?: string
+    baseUrl?: string
+  } | null
+  sentAt: string
 }
 
 export type SavedResponseSummary = {

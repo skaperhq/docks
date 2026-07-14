@@ -5,6 +5,15 @@ import { TanStackDevtools } from "@tanstack/react-devtools"
 import appCss from "../styles.css?url"
 import { ThemeProvider } from "../components/theme-provider"
 import { EnvironmentProvider } from "../components/environment-provider"
+import { createIndexedDbStorageAdapter } from "../lib/indexed-db-storage"
+import {
+  isDocksStorageAdapterConfigured,
+  setDocksStorageAdapter,
+} from "../lib/storage-adapter"
+
+if (!isDocksStorageAdapterConfigured()) {
+  setDocksStorageAdapter(createIndexedDbStorageAdapter())
+}
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,10 +26,24 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "TanStack Start Starter",
+        title: "Skaper · API Workspace",
+      },
+      {
+        name: "description",
+        content:
+          "Explore OpenAPI documentation, compose requests, and manage environments in Skaper.",
       },
     ],
     links: [
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href: "/favicon.svg",
+      },
+      {
+        rel: "manifest",
+        href: "/manifest.json",
+      },
       {
         rel: "stylesheet",
         href: appCss,
@@ -45,7 +68,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                const theme = localStorage.getItem('vite-ui-theme') || 'system';
+                const theme = localStorage.getItem('docks-ui-theme') || localStorage.getItem('vite-ui-theme') || 'system';
                 const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 document.documentElement.classList.toggle('dark', isDark);
               } catch (e) {}
@@ -55,9 +78,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          <EnvironmentProvider>
-            {children}
-          </EnvironmentProvider>
+          <EnvironmentProvider>{children}</EnvironmentProvider>
         </ThemeProvider>
         <TanStackDevtools
           config={{
@@ -75,4 +96,3 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     </html>
   )
 }
-

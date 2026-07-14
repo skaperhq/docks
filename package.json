@@ -1,6 +1,17 @@
 {
-  "name": "docks",
-  "private": true,
+  "name": "just-skaper",
+  "version": "0.1.0",
+  "description": "An OpenAPI documentation and API request workspace with pluggable browser storage.",
+  "license": "MIT",
+  "keywords": [
+    "openapi",
+    "api-documentation",
+    "api-client",
+    "react"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 3000",
@@ -13,6 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/search": "^6.7.1",
     "@fontsource-variable/inter": "^5.2.8",
     "@tailwindcss/vite": "^4",
     "@tanstack/react-devtools": "latest",
@@ -21,9 +34,9 @@
     "@tanstack/react-router-ssr-query": "latest",
     "@tanstack/react-start": "latest",
     "@tanstack/router-plugin": "latest",
-    "better-sqlite3": "^12.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "codemirror": "^6.0.2",
     "lucide-react": "^1.21.0",
     "radix-ui": "^1.6.0",
     "react": "^19.2.6",
@@ -38,12 +51,12 @@
     "@tanstack/eslint-config": "latest",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6",
     "eslint": "^9",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^28",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",

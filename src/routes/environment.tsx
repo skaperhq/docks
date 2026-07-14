@@ -46,7 +46,6 @@ function EnvironmentPage() {
   } = useEnvironment()
 
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [requestOnly, setRequestOnly] = React.useState(false)
 
   // Track password/secret visibility by variable id
   const [visibleSecrets, setVisibleSecrets] = React.useState<
@@ -117,12 +116,15 @@ function EnvironmentPage() {
   return (
     <SidebarProvider>
       <AppSidebar
-        selectedOperationId=""
+        selectedOperationId={null}
         searchQuery={searchQuery}
-        requestOnly={requestOnly}
         savedResponses={[]}
+        customRequests={[]}
+        selectedRequestId={null}
+        onSelectOverview={() => {
+          navigate({ to: "/", search: { operationId: undefined } })
+        }}
         onSearchQueryChange={setSearchQuery}
-        onRequestOnlyChange={setRequestOnly}
         onSelectOperation={(operation) => {
           navigate({ to: "/", search: { operationId: operation.id } })
         }}
@@ -130,6 +132,14 @@ function EnvironmentPage() {
           navigate({ to: "/", search: { operationId: response.operationId } })
         }}
         onDeleteSavedResponse={() => {}}
+        onDeleteCustomRequest={() => {}}
+        onCreateCustomRequest={async () => null}
+        onSelectCustomRequest={(request) => {
+          navigate({
+            to: "/",
+            search: { operationId: `custom:${request.id}` },
+          })
+        }}
       />
       <SidebarInset className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
         {/* Header */}
@@ -158,9 +168,9 @@ function EnvironmentPage() {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex min-h-0 flex-1 divide-x divide-border overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:divide-x md:divide-border md:overflow-hidden">
           {/* Left panel: Environment list */}
-          <div className="flex w-[18rem] shrink-0 flex-col bg-card/40">
+          <div className="flex max-h-64 w-full shrink-0 flex-col border-b border-border bg-card/40 md:max-h-none md:w-[18rem] md:border-b-0">
             <div className="flex items-center justify-between border-b border-border p-4">
               <span className="text-sm font-normal text-muted-foreground">
                 Add Environment
@@ -220,57 +230,74 @@ function EnvironmentPage() {
                   return (
                     <div
                       key={env.id}
-                      onClick={() => setActiveEnvironmentId(env.id)}
-                      className={`group relative flex cursor-pointer flex-col gap-1 rounded-md border p-3 text-left transition-all duration-200 hover:shadow-sm ${
+                      className={`group relative rounded-lg border p-1 transition-colors hover:shadow-sm ${
                         isActive
-                          ? "border-primary bg-primary text-white hover:bg-primary/90"
-                          : "border-border bg-background/40 text-muted-foreground hover:bg-accent/20 hover:text-foreground"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background/40 text-muted-foreground"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-1.5">
-                        <span className="truncate text-[13px] font-normal">
-                          {env.name}
-                        </span>
-                        {isActive && (
-                          <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-medium text-black">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <span
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        aria-pressed={isActive}
+                        onClick={() => setActiveEnvironmentId(env.id)}
                         className={cn(
-                          "truncate text-[11px] text-muted-foreground",
-                          isActive && "text-white/80"
+                          "h-auto w-full flex-col items-stretch gap-1 px-2 py-2 text-left font-normal hover:bg-accent/50",
+                          isActive &&
+                            "text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
                         )}
                       >
-                        {env.baseUrl || "No base URL"}
-                      </span>
+                        <span className="flex items-center justify-between gap-1.5">
+                          <span className="truncate text-[13px]">
+                            {env.name}
+                          </span>
+                          {isActive && (
+                            <span className="shrink-0 rounded-full bg-primary-foreground px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                              Active
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={cn(
+                            "truncate text-[11px] text-muted-foreground",
+                            isActive && "text-primary-foreground/75"
+                          )}
+                        >
+                          {env.baseUrl || "No base URL"}
+                        </span>
+                      </Button>
 
                       {/* Actions */}
                       <div className="absolute right-2 bottom-2 hidden items-center gap-1 rounded-md border border-border bg-background p-0.5 shadow-sm group-hover:flex">
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-xs"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleDuplicateEnv(env)
                           }}
-                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          className="text-muted-foreground"
+                          aria-label={`Duplicate ${env.name}`}
                           title="Duplicate Environment"
                         >
                           <Copy className="size-3.5" />
-                        </button>
+                        </Button>
                         {environments.length > 1 && (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon-xs"
                             onClick={(e) => {
                               e.stopPropagation()
                               deleteEnvironment(env.id)
                             }}
-                            className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label={`Delete ${env.name}`}
                             title="Delete Environment"
                           >
                             <Trash2 className="size-3.5" />
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -281,12 +308,12 @@ function EnvironmentPage() {
           </div>
 
           {/* Right panel: Environment editor */}
-          <div className="flex flex-1 flex-col bg-background">
+          <div className="flex min-h-[32rem] min-w-0 flex-1 flex-col bg-background md:min-h-0">
             {activeEnvironment ? (
-              <ScrollArea className="flex-1">
-                <div className="max-w-4xl space-y-8 p-8">
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="max-w-4xl space-y-8 p-4 sm:p-8">
                   {/* Name and Base URL Section */}
-                  <div className="space-y-4">
+                  <div className="min-w-0 space-y-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-normal text-muted-foreground">
                         Environment Name
@@ -325,8 +352,8 @@ function EnvironmentPage() {
                   </div>
 
                   {/* Variables Grid */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                  <div className="min-w-0 space-y-4">
+                    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                       <div className="flex flex-col gap-0.5">
                         <h2 className="text-sm font-normal text-foreground">
                           Variables & Auth Keys
@@ -351,8 +378,8 @@ function EnvironmentPage() {
                     </div>
 
                     {/* Table Grid */}
-                    <div className="overflow-hidden rounded-md border border-border bg-card/20">
-                      <div className="grid grid-cols-[3rem_12rem_16rem_1fr_3.5rem] border-b border-border bg-background px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                    <div className="w-full max-w-full min-w-0 overflow-x-auto rounded-md border border-border bg-card/20 [contain:inline-size]">
+                      <div className="grid min-w-[52rem] grid-cols-[3rem_12rem_16rem_1fr_3.5rem] border-b border-border bg-background px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
                         <div>Use</div>
                         <div>Variable Key</div>
                         <div>Value</div>
@@ -361,7 +388,7 @@ function EnvironmentPage() {
                       </div>
 
                       {activeEnvironment.variables.length > 0 ? (
-                        <div className="divide-y divide-border">
+                        <div className="min-w-[52rem] divide-y divide-border">
                           {activeEnvironment.variables.map((variable) => {
                             const isSecret = variable.isSecret ?? false
                             const showSecret =
@@ -427,12 +454,17 @@ function EnvironmentPage() {
                                     className="h-8 flex-1 border-border/80 bg-background pr-8 text-[12px] focus-visible:ring-primary"
                                     placeholder="value"
                                   />
-                                  <button
+                                  <Button
                                     type="button"
+                                    variant="ghost"
+                                    size="icon-xs"
                                     onClick={() =>
                                       toggleSecretVisibility(variable.id)
                                     }
-                                    className="absolute right-5 p-1 text-muted-foreground transition-colors hover:text-foreground"
+                                    className="absolute right-5 text-muted-foreground hover:text-foreground"
+                                    aria-label={
+                                      showSecret ? "Hide value" : "Show value"
+                                    }
                                     title={
                                       showSecret ? "Hide value" : "Show value"
                                     }
@@ -442,7 +474,7 @@ function EnvironmentPage() {
                                     ) : (
                                       <Eye className="size-3.5" />
                                     )}
-                                  </button>
+                                  </Button>
                                 </div>
 
                                 {/* Description */}
@@ -465,19 +497,22 @@ function EnvironmentPage() {
 
                                 {/* Delete */}
                                 <div className="flex justify-center">
-                                  <button
+                                  <Button
                                     type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
                                     onClick={() =>
                                       deleteVariable(
                                         activeEnvironment.id,
                                         variable.id
                                       )
                                     }
-                                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    aria-label={`Delete ${variable.key || "variable"}`}
                                     title="Delete Variable"
                                   >
                                     <Trash2 className="size-3.5" />
-                                  </button>
+                                  </Button>
                                 </div>
                               </div>
                             )
@@ -495,7 +530,7 @@ function EnvironmentPage() {
                   {/* Info alert block */}
                   <div className="bg-muted-background flex gap-3 rounded-md border p-4 text-xs leading-relaxed text-muted-foreground dark:text-muted-foreground/90">
                     <Info className="size-5 shrink-0 text-primary" />
-                    <div>
+                    <div className="min-w-0 flex-1 break-words">
                       To reference these variables in your request details, type
                       the variable key wrapped in double curly braces, like{" "}
                       <code className="rounded bg-muted/50 px-1 font-mono">

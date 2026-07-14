@@ -1,6 +1,6 @@
 import * as React from "react"
-
-export type Theme = "dark" | "light" | "system"
+import { ThemeProviderContext } from "@/components/theme-context"
+import type { Theme } from "@/components/theme-context"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -8,29 +8,22 @@ type ThemeProviderProps = {
   storageKey?: string
 }
 
-type ThemeProviderState = {
-  theme: Theme
-  setTheme: (theme: Theme) => void
-}
-
-const initialState: ThemeProviderState = {
-  theme: "system",
-  setTheme: () => null,
-}
-
-const ThemeProviderContext = React.createContext<ThemeProviderState>(initialState)
-
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "vite-ui-theme",
+  storageKey = "docks-ui-theme",
   ...props
 }: ThemeProviderProps) {
+  // Keep the provider component isolated so Fast Refresh preserves context users.
   const [theme, setThemeState] = React.useState<Theme>(defaultTheme)
 
   React.useEffect(() => {
-    const savedTheme = localStorage.getItem(storageKey) as Theme
-    if (savedTheme) {
+    const savedTheme = localStorage.getItem(storageKey)
+    if (
+      savedTheme === "light" ||
+      savedTheme === "dark" ||
+      savedTheme === "system"
+    ) {
       setThemeState(savedTheme)
     }
   }, [storageKey])
@@ -38,10 +31,10 @@ export function ThemeProvider({
   React.useEffect(() => {
     const root = window.document.documentElement
 
-    const applyTheme = (t: Theme) => {
+    const applyTheme = (nextTheme: Theme) => {
       root.classList.remove("light", "dark")
 
-      if (t === "system") {
+      if (nextTheme === "system") {
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
           .matches
           ? "dark"
@@ -51,7 +44,7 @@ export function ThemeProvider({
         return
       }
 
-      root.classList.add(t)
+      root.classList.add(nextTheme)
     }
 
     applyTheme(theme)
@@ -61,7 +54,7 @@ export function ThemeProvider({
     if (theme !== "system") return
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    
+
     const handleChange = () => {
       const root = window.document.documentElement
       root.classList.remove("light", "dark")
@@ -73,28 +66,25 @@ export function ThemeProvider({
     return () => mediaQuery.removeEventListener("change", handleChange)
   }, [theme])
 
-  const setTheme = React.useCallback((theme: Theme) => {
-    localStorage.setItem(storageKey, theme)
-    setThemeState(theme)
-  }, [storageKey])
+  const setTheme = React.useCallback(
+    (nextTheme: Theme) => {
+      localStorage.setItem(storageKey, nextTheme)
+      setThemeState(nextTheme)
+    },
+    [storageKey]
+  )
 
-  const value = React.useMemo(() => ({
-    theme,
-    setTheme,
-  }), [theme, setTheme])
+  const value = React.useMemo(
+    () => ({
+      theme,
+      setTheme,
+    }),
+    [theme, setTheme]
+  )
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>
       {children}
     </ThemeProviderContext.Provider>
   )
-}
-
-export const useTheme = () => {
-  const context = React.useContext(ThemeProviderContext)
-
-  if (context === undefined)
-    throw new Error("useTheme must be used within a ThemeProvider")
-
-  return context
 }

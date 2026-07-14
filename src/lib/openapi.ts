@@ -1,4 +1,5 @@
 import openApiSpecJson from "@/data/mock-openapi.json"
+import type { RequestMode } from "./api-reference-actions"
 
 type HttpMethod =
   "delete" | "get" | "head" | "options" | "patch" | "post" | "put" | "trace"
@@ -66,6 +67,8 @@ type OperationObject = {
 }
 
 type OpenApiSpec = {
+  openapi?: string
+  swagger?: string
   info: {
     title: string
     version: string
@@ -100,6 +103,8 @@ export type ApiOperation = {
   requestExample: unknown
   responseCodes: string[]
   responses: ApiResponse[]
+  requestMode: RequestMode
+  hasEventStreamResponse: boolean
   requestUrl: string
   searchText: string
 }
@@ -397,6 +402,8 @@ function createSchemaExample(
 }
 
 export const apiInfo = openApiSpec.info
+export const apiSpecVersion =
+  openApiSpec.openapi ?? openApiSpec.swagger ?? "Unknown"
 export const apiServers = openApiSpec.servers ?? []
 
 export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
@@ -414,6 +421,10 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
       const summary = operation.summary ?? operation.operationId ?? path
       const responseCodes = Object.keys(operation.responses ?? {})
       const responses = getOperationResponses(operation)
+      const { requestMode, hasEventStreamResponse } = getOpenApiRequestMode(
+        method,
+        responses
+      )
       const hasAuth = operation.security?.some((requirement) =>
         Object.keys(requirement).includes("bearerAuth")
       )
@@ -446,6 +457,8 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
           requestExample: createSchemaExample(requestSchema.schema),
           responseCodes,
           responses,
+          requestMode,
+          hasEventStreamResponse,
           requestUrl: getRequestUrl(path),
           searchText: [
             method,
@@ -467,6 +480,33 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
     })
 )
 
+/** Detects native SSE operations from their advertised response content type. */
+export function getOpenApiRequestMode(
+  method: string,
+  responses: ApiResponse[]
+): { requestMode: RequestMode; hasEventStreamResponse: boolean } {
+  const hasEventStreamResponse = responses.some((response) =>
+    response.contentTypes.some(
+      (contentType) =>
+        contentType.split(";", 1)[0]?.trim().toLowerCase() ===
+        "text/event-stream"
+    )
+  )
+
+  return {
+    requestMode:
+      hasEventStreamResponse && method.toUpperCase() === "GET"
+        ? "sse"
+        : "standard",
+    hasEventStreamResponse,
+  }
+}
+
+/**
+ * Groups the parsed operations by OpenAPI tag after applying sidebar filters.
+ * Tag order follows the source document; previously undeclared tags are added
+ * in the order their operations are encountered.
+ */
 export function getOperationGroups({
   query,
   requestOnly,
@@ -502,6 +542,7 @@ export function getOperationGroups({
     .filter((group) => group.operations.length > 0)
 }
 
+/** Converts an object schema into rows suitable for the documentation table. */
 export function formatSchema(schema: SchemaObject | undefined) {
   if (!schema?.properties) {
     return schema?.type ?? "No request schema available."

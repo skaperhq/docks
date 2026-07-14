@@ -22,6 +22,7 @@ export function parameterToRow(parameter: ApiParameter): KeyValueRow {
   }
 }
 
+/** Builds editable request headers derived from an OpenAPI operation. */
 export function getHeaderRows(operation: ApiOperation): KeyValueRow[] {
   const rows: KeyValueRow[] = []
 
@@ -48,7 +49,7 @@ export function getHeaderRows(operation: ApiOperation): KeyValueRow[] {
   return rows
 }
 
-export function getMethodClassName(method: ApiOperation["method"]) {
+export function getMethodClassName(method: string) {
   switch (method) {
     case "GET":
       return "text-emerald-600 dark:text-[#6bdd9a]"
@@ -64,7 +65,7 @@ export function getMethodClassName(method: ApiOperation["method"]) {
   }
 }
 
-export function getBgMethodClassName(method: ApiOperation["method"]) {
+export function getBgMethodClassName(method: string) {
   switch (method) {
     case "GET":
       return "bg-emerald-50 dark:bg-[#003415]"
@@ -100,6 +101,8 @@ export function prettyPrintJson(value: string) {
   try {
     return JSON.stringify(JSON.parse(value), null, 2)
   } catch {
+    // Editors may call this while a user is halfway through valid JSON. Keep
+    // their draft intact instead of treating an incomplete value as an error.
     return value
   }
 }

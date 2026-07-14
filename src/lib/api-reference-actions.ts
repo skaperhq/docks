@@ -1,36 +1,44 @@
-import { createServerFn } from "@tanstack/react-start"
-import { db } from "./db"
+import { getDocksStorageAdapter } from "./storage-adapter"
+import { normalizeRequestConfiguration } from "./request-model"
 import type {
   RequestTab,
   ResponseResult,
+  SavedRequestSnapshot,
   SavedResponseSummary,
 } from "@/components/api-reference/types"
 
-type RequestTabDb = {
-  operation_id: string
-  request_tab: string
-  draft_json: string
-  position: number
-}
+export type RequestTransport = "http" | "websocket"
 
-type SavedResponseDb = {
+export type RequestMode = "standard" | "sse"
+
+export type RequestMethod =
+  "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
+
+export type PersistedCollection = {
   id: string
-  operation_id: string
-  method: string
-  path: string
   name: string
-  status: number
-  ok: number
-  duration_ms: number
-  size_bytes: number
-  content_type: string
-  result_json: string
-  created_at: string
+  position: number
+  createdAt: string
+  updatedAt: string
 }
 
-type WorkspaceSettingDb = {
-  key: string
-  value: string
+export type PersistedCustomRequest = {
+  id: string
+  collectionId: string
+  name: string
+  method: RequestMethod
+  transport: RequestTransport
+  mode: RequestMode
+  url: string
+  draft: SerializableRequestDraft
+  position: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type PersistedSavedResponse = SavedResponseSummary & {
+  requestSnapshot: SavedRequestSnapshot
+  result: ResponseResult
 }
 
 type SerializableKeyValueRow = {
@@ -58,6 +66,9 @@ type SerializableRequestDraft = {
     mode: string
     contentType: string
     value: string
+    formDataRows?: SerializableKeyValueRow[]
+    urlEncodedRows?: SerializableKeyValueRow[]
+    binaryFileName?: string
   }
 }
 
@@ -66,12 +77,20 @@ export type PersistedRequestTab = {
   requestTab: RequestTab
   draft: SerializableRequestDraft
   position: number
+  updatedAt: string
 }
 
 export type ApiWorkspaceState = {
   requestTabs: PersistedRequestTab[]
   savedResponses: SavedResponseSummary[]
+  collections: PersistedCollection[]
+  customRequests: PersistedCustomRequest[]
   responsePanelHeight: number
+}
+
+export type SavedResponseDetail = SavedResponseSummary & {
+  requestSnapshot: SavedRequestSnapshot | null
+  result: ResponseResult
 }
 
 export type UpsertRequestTabInput = {
@@ -86,237 +105,158 @@ export type SaveResponseInput = {
   method: string
   path: string
   name: string
+  requestSnapshot: SavedRequestSnapshot
   result: ResponseResult
 }
 
-const DEFAULT_RESPONSE_PANEL_HEIGHT = 360
+export async function getApiWorkspace(): Promise<ApiWorkspaceState> {
+  return getDocksStorageAdapter().getApiWorkspace()
+}
 
-export const getApiWorkspace = createServerFn({ method: "GET" }).handler(
-  async (): Promise<ApiWorkspaceState> => {
-    const requestRows = db
-      .prepare(
-        "SELECT operation_id, request_tab, draft_json, position FROM api_request_tabs ORDER BY position ASC, updated_at ASC"
-      )
-      .all() as RequestTabDb[]
-    const savedRows = db
-      .prepare(
-        "SELECT * FROM saved_responses ORDER BY datetime(created_at) DESC LIMIT 100"
-      )
-      .all() as SavedResponseDb[]
-    const settings = db
-      .prepare("SELECT key, value FROM api_workspace_settings")
-      .all() as WorkspaceSettingDb[]
-    const settingMap = new Map(settings.map((item) => [item.key, item.value]))
-    const persistedHeight = Number(settingMap.get("response_panel_height"))
+export async function upsertRequestTab({
+  data,
+}: {
+  data: UpsertRequestTabInput
+}) {
+  return getDocksStorageAdapter().upsertRequestTab({ data })
+}
 
-    return {
-      requestTabs: requestRows.flatMap((row) => {
-        const draft = parseJson<SerializableRequestDraft>(row.draft_json)
-        if (!draft) {
-          return []
-        }
+export async function deleteRequestTab({
+  data: operationId,
+}: {
+  data: string
+}) {
+  return getDocksStorageAdapter().deleteRequestTab({ data: operationId })
+}
 
-        return [
-          {
-            operationId: row.operation_id,
-            requestTab: normalizeRequestTab(row.request_tab),
-            draft,
-            position: row.position,
-          },
-        ]
-      }),
-      savedResponses: uniqueSavedResponses(
-        savedRows.map(toSavedResponseSummary)
-      ),
-      responsePanelHeight: Number.isFinite(persistedHeight)
-        ? persistedHeight
-        : DEFAULT_RESPONSE_PANEL_HEIGHT,
-    }
+export async function saveWorkspaceSetting({
+  data,
+}: {
+  data: { key: string; value: string }
+}) {
+  return getDocksStorageAdapter().saveWorkspaceSetting({ data })
+}
+
+export async function saveResponse({ data }: { data: SaveResponseInput }) {
+  const savedResponse = await getDocksStorageAdapter().saveResponse({ data })
+  return toSavedResponseSummary(savedResponse)
+}
+
+export async function deleteSavedResponse({ data }: { data: { id: string } }) {
+  return getDocksStorageAdapter().deleteSavedResponse({ data })
+}
+
+export async function getSavedResponse({
+  data: id,
+}: {
+  data: string
+}): Promise<SavedResponseDetail | null> {
+  return getDocksStorageAdapter().getSavedResponse({ data: id })
+}
+
+export async function createCollection({
+  data,
+}: {
+  data: { name: string; position: number }
+}) {
+  const now = new Date().toISOString()
+  const collection: PersistedCollection = {
+    id: createId(),
+    name: data.name,
+    position: data.position,
+    createdAt: now,
+    updatedAt: now,
   }
-)
 
-export const upsertRequestTab = createServerFn({ method: "POST" })
-  .validator((data: UpsertRequestTabInput) => data)
-  .handler(async ({ data }) => {
-    db.prepare(
-      `
-      INSERT INTO api_request_tabs (operation_id, request_tab, draft_json, position, updated_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(operation_id) DO UPDATE SET
-        request_tab = excluded.request_tab,
-        draft_json = excluded.draft_json,
-        position = excluded.position,
-        updated_at = CURRENT_TIMESTAMP
-    `
-    ).run(
-      data.operationId,
-      data.requestTab,
-      JSON.stringify(data.draft),
-      data.position
-    )
+  return getDocksStorageAdapter().createCollection({ data: collection })
+}
 
-    return { success: true }
+export async function updateCollection({
+  data,
+}: {
+  data: PersistedCollection
+}) {
+  return getDocksStorageAdapter().updateCollection({
+    data: { ...data, updatedAt: new Date().toISOString() },
   })
+}
 
-export const deleteRequestTab = createServerFn({ method: "POST" })
-  .validator((data: string) => data)
-  .handler(async ({ data: operationId }) => {
-    db.prepare("DELETE FROM api_request_tabs WHERE operation_id = ?").run(
-      operationId
-    )
+export async function deleteCollection({ data }: { data: string }) {
+  return getDocksStorageAdapter().deleteCollection({ data })
+}
 
-    return { success: true }
+export async function upsertCustomRequest({
+  data,
+}: {
+  data: PersistedCustomRequest
+}) {
+  const normalizedRequest = normalizeCustomRequest(data)
+  return getDocksStorageAdapter().upsertCustomRequest({
+    data: { ...normalizedRequest, updatedAt: new Date().toISOString() },
   })
+}
 
-export const saveWorkspaceSetting = createServerFn({ method: "POST" })
-  .validator((data: { key: string; value: string }) => data)
-  .handler(async ({ data }) => {
-    db.prepare(
-      `
-      INSERT INTO api_workspace_settings (key, value, updated_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = CURRENT_TIMESTAMP
-    `
-    ).run(data.key, data.value)
+export async function createCustomRequest({
+  data,
+}: {
+  data: {
+    collectionId: string
+    name: string
+    method: RequestMethod
+    transport: RequestTransport
+    mode: RequestMode
+    url: string
+    draft: SerializableRequestDraft
+    position: number
+  }
+}) {
+  const now = new Date().toISOString()
+  const request: PersistedCustomRequest = {
+    ...normalizeRequestConfiguration(data),
+    id: createId(),
+    collectionId: data.collectionId,
+    name: data.name,
+    url: data.url,
+    draft: data.draft,
+    position: data.position,
+    createdAt: now,
+    updatedAt: now,
+  }
 
-    return { success: true }
-  })
+  return getDocksStorageAdapter().upsertCustomRequest({ data: request })
+}
 
-export const saveResponse = createServerFn({ method: "POST" })
-  .validator((data: SaveResponseInput) => data)
-  .handler(async ({ data }) => {
-    const existing = db
-      .prepare(
-        "SELECT * FROM saved_responses WHERE operation_id = ? ORDER BY datetime(created_at) DESC LIMIT 1"
-      )
-      .get(data.operationId) as SavedResponseDb | undefined
-
-    if (existing) {
-      return toSavedResponseSummary(existing)
-    }
-
-    const id = `${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`
-
-    db.prepare(
-      `
-      INSERT INTO saved_responses (
-        id,
-        operation_id,
-        method,
-        path,
-        name,
-        status,
-        ok,
-        duration_ms,
-        size_bytes,
-        content_type,
-        result_json
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-    ).run(
-      id,
-      data.operationId,
-      data.method,
-      data.path,
-      data.name,
-      data.result.status,
-      data.result.ok ? 1 : 0,
-      data.result.durationMs,
-      data.result.sizeBytes,
-      data.result.contentType,
-      JSON.stringify(data.result)
-    )
-
-    const row = db
-      .prepare("SELECT * FROM saved_responses WHERE id = ?")
-      .get(id) as SavedResponseDb
-
-    return toSavedResponseSummary(row)
-  })
-
-export const deleteSavedResponse = createServerFn({ method: "POST" })
-  .validator((data: { id: string; operationId: string }) => data)
-  .handler(async ({ data }) => {
-    db.prepare(
-      "DELETE FROM saved_responses WHERE id = ? OR operation_id = ?"
-    ).run(data.id, data.operationId)
-
-    return { success: true }
-  })
-
-export const getSavedResponse = createServerFn({ method: "GET" })
-  .validator((data: string) => data)
-  .handler(async ({ data: id }) => {
-    const row = db
-      .prepare("SELECT * FROM saved_responses WHERE id = ?")
-      .get(id) as SavedResponseDb | undefined
-
-    if (!row) {
-      return null
-    }
-
-    const result = parseJson<ResponseResult>(row.result_json)
-    if (!result) {
-      return null
-    }
-
-    return {
-      ...toSavedResponseSummary(row),
-      result,
-    }
-  })
-
-function toSavedResponseSummary(row: SavedResponseDb): SavedResponseSummary {
+function normalizeCustomRequest(
+  request: PersistedCustomRequest
+): PersistedCustomRequest {
   return {
-    id: row.id,
-    operationId: row.operation_id,
-    method: row.method,
-    path: row.path,
-    name: row.name,
-    status: row.status,
-    ok: row.ok === 1,
-    durationMs: row.duration_ms,
-    sizeBytes: row.size_bytes,
-    contentType: row.content_type,
-    createdAt: row.created_at,
+    ...request,
+    ...normalizeRequestConfiguration(request),
   }
 }
 
-function uniqueSavedResponses(responses: SavedResponseSummary[]) {
-  const byOperation = new Map<string, SavedResponseSummary>()
-
-  for (const response of responses) {
-    if (!byOperation.has(response.operationId)) {
-      byOperation.set(response.operationId, response)
-    }
-  }
-
-  return Array.from(byOperation.values())
+export async function deleteCustomRequest({ data }: { data: string }) {
+  return getDocksStorageAdapter().deleteCustomRequest({ data })
 }
 
-function normalizeRequestTab(value: string): RequestTab {
-  if (
-    value === "Docs" ||
-    value === "Params" ||
-    value === "Authorization" ||
-    value === "Headers" ||
-    value === "Body"
-  ) {
-    return value
+function toSavedResponseSummary(
+  response: PersistedSavedResponse
+): SavedResponseSummary {
+  return {
+    id: response.id,
+    operationId: response.operationId,
+    method: response.method,
+    path: response.path,
+    name: response.name,
+    status: response.status,
+    ok: response.ok,
+    durationMs: response.durationMs,
+    sizeBytes: response.sizeBytes,
+    contentType: response.contentType,
+    createdAt: response.createdAt,
   }
-
-  return "Docs"
 }
 
-function parseJson<T>(value: string): T | null {
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return null
-  }
+function createId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }

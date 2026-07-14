@@ -1,16 +1,26 @@
 import {
   BracesIcon,
   CopyIcon,
-  LinkIcon,
-  LockIcon,
   SaveIcon,
   SearchIcon,
   WrapTextIcon,
 } from "lucide-react"
 import * as React from "react"
 import { Button } from "@/components/ui/button"
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { BodyEditor } from "./body-editor"
+import type { BodyEditorHandle } from "./body-editor"
 import type { ResponseHeader, ResponseState } from "./types"
 import { prettyPrintJson } from "./utils"
 
@@ -20,25 +30,62 @@ export function ResponseBar({
   onHeightChange,
   onHeightCommit,
   onSaveResponse,
+  saveDefaultName,
   saveDisabled = false,
-  isResponseSaved = false,
+  showSave = true,
+  curlCommand = "",
 }: {
   response: ResponseState
   height: number
   onHeightChange: (height: number) => void
   onHeightCommit: (height: number) => void
-  onSaveResponse: () => void
+  onSaveResponse: (name: string) => void
+  saveDefaultName: string
   saveDisabled?: boolean
-  isResponseSaved?: boolean
+  showSave?: boolean
+  curlCommand?: string
 }) {
   const result = response.status === "success" ? response.result : undefined
   const isLoading = response.status === "loading"
   const error = response.status === "error" ? response.error : undefined
+  const [saveDialogOpen, setSaveDialogOpen] = React.useState(false)
+  const [saveName, setSaveName] = React.useState(saveDefaultName)
+  const [lineWrapping, setLineWrapping] = React.useState(false)
+  const [toastMessage, setToastMessage] = React.useState("")
+  const bodyEditorRef = React.useRef<BodyEditorHandle>(null)
+  const toastTimerRef = React.useRef<number | null>(null)
   const bodyText = result
     ? formatResponseBody(result.bodyText, result.contentType)
     : error
       ? JSON.stringify({ error }, null, 2)
       : ""
+
+  React.useEffect(() => {
+    if (!saveDialogOpen) {
+      setSaveName(saveDefaultName)
+    }
+  }, [saveDefaultName, saveDialogOpen])
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    }
+  }, [])
+
+  const showToast = React.useCallback((message: string) => {
+    setToastMessage(message)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => setToastMessage(""), 2200)
+  }, [])
+
+  async function copyText(text: string, successMessage: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      showToast(successMessage)
+    } catch {
+      showToast("Could not copy to clipboard")
+    }
+  }
 
   function handleResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     event.preventDefault()
@@ -66,7 +113,7 @@ export function ResponseBar({
     <Tabs
       defaultValue="Body"
       style={{ height }}
-      className="relative shrink-0 gap-0 border-t border-border bg-background text-foreground"
+      className="relative shrink-0 gap-0 overflow-hidden rounded-t-lg border border-b-0 border-border bg-background text-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.08)]"
     >
       <div
         role="separator"
@@ -75,9 +122,9 @@ export function ResponseBar({
         onPointerDown={handleResizePointerDown}
         className="absolute inset-x-0 top-0 z-10 h-2 -translate-y-1 cursor-row-resize touch-none"
       />
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-2">
-        <div className="flex h-full items-center gap-7">
-          <TabsList variant="default">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+        <div className="min-w-0 overflow-x-auto">
+          <TabsList variant="default" className="shrink-0 rounded-md">
             <TabsTrigger value="Body" className="">
               Body
             </TabsTrigger>
@@ -90,30 +137,26 @@ export function ResponseBar({
                 </span>
               ) : null}
             </TabsTrigger>
+            {curlCommand ? (
+              <TabsTrigger value="Request">Request</TabsTrigger>
+            ) : null}
           </TabsList>
         </div>
 
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-8 gap-2 rounded-md px-3"
-            onClick={onSaveResponse}
-            disabled={!result || saveDisabled || isResponseSaved}
-            aria-label={
-              isResponseSaved ? "Response already saved" : "Save response"
-            }
-            title={
-              isResponseSaved ? "This response is already saved" : undefined
-            }
-          >
-            {isResponseSaved ? (
-              <LockIcon className="size-4" />
-            ) : (
+        <div className="flex shrink-0 items-center gap-3 text-sm text-muted-foreground">
+          {showSave ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 shrink-0 gap-2 rounded-md bg-background px-3"
+              onClick={() => setSaveDialogOpen(true)}
+              disabled={!result || saveDisabled}
+              aria-label="Save response"
+            >
               <SaveIcon className="size-4" />
-            )}
-            {isResponseSaved ? "Saved" : "Save"}
-          </Button>
+              Save
+            </Button>
+          ) : null}
           {isLoading ? (
             <span className="rounded-md bg-blue-500/10 px-3 py-1 font-normal text-blue-500">
               Sending...
@@ -147,7 +190,14 @@ export function ResponseBar({
 
       <div className="min-h-0 flex-1">
         <TabsContent value="Body" className="m-0 flex h-full flex-col">
-          <ResponseBodyToolbar contentType={result?.contentType} />
+          <ResponseBodyToolbar
+            contentType={result?.contentType}
+            bodyText={bodyText}
+            lineWrapping={lineWrapping}
+            onLineWrappingChange={setLineWrapping}
+            onSearch={() => bodyEditorRef.current?.openSearch()}
+            onCopy={() => copyText(bodyText, "Response copied")}
+          />
           <ResponseCodeView
             text={
               bodyText ||
@@ -155,6 +205,9 @@ export function ResponseBar({
                 ? '{\n  "status": "sending"\n}'
                 : '{\n  "status": "idle"\n}')
             }
+            contentType={result?.contentType}
+            lineWrapping={lineWrapping}
+            ref={bodyEditorRef}
           />
         </TabsContent>
         <TabsContent value="Cookies" className="m-0 h-full">
@@ -169,12 +222,97 @@ export function ResponseBar({
             headers={result?.headers ?? []}
           />
         </TabsContent>
+        {curlCommand ? (
+          <TabsContent value="Request" className="m-0 flex h-full flex-col">
+            <div className="flex h-11 shrink-0 items-center justify-between px-7 text-sm text-muted-foreground">
+              <span>cURL for the request that produced this response</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                onClick={() => copyText(curlCommand, "cURL copied")}
+                aria-label="Copy request cURL"
+              >
+                <CopyIcon className="size-4" />
+              </Button>
+            </div>
+            <BodyEditor
+              value={curlCommand}
+              contentType="text/x-shellscript"
+              readOnly
+            />
+          </TabsContent>
+        ) : null}
       </div>
+
+      {toastMessage ? (
+        <div
+          role="status"
+          className="absolute right-4 bottom-4 z-50 rounded-md border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
+        >
+          {toastMessage}
+        </div>
+      ) : null}
+
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Response</DialogTitle>
+            <DialogDescription>
+              Name this response snapshot before saving it.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const trimmedName = saveName.trim()
+              if (!trimmedName) {
+                return
+              }
+              onSaveResponse(trimmedName)
+              setSaveDialogOpen(false)
+            }}
+          >
+            <Input
+              value={saveName}
+              onChange={(event) => setSaveName(event.target.value)}
+              autoFocus
+              placeholder="Response name"
+            />
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={!saveName.trim() || saveDisabled}>
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   )
 }
 
-function ResponseBodyToolbar({ contentType }: { contentType?: string }) {
+function ResponseBodyToolbar({
+  contentType,
+  bodyText,
+  lineWrapping,
+  onLineWrappingChange,
+  onSearch,
+  onCopy,
+}: {
+  contentType?: string
+  bodyText: string
+  lineWrapping: boolean
+  onLineWrappingChange: (lineWrapping: boolean) => void
+  onSearch: () => void
+  onCopy: () => void
+}) {
   return (
     <div className="flex h-11 items-center justify-between px-7 text-muted-foreground">
       <div className="flex items-center gap-5">
@@ -184,15 +322,32 @@ function ResponseBodyToolbar({ contentType }: { contentType?: string }) {
         </Button>
       </div>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="size-6">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          onClick={() => onLineWrappingChange(!lineWrapping)}
+          aria-pressed={lineWrapping}
+        >
           <WrapTextIcon className="size-4" />
           <span className="sr-only">Toggle line wrap</span>
         </Button>
-        <Button variant="ghost" size="icon" className="size-6">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          onClick={onSearch}
+        >
           <SearchIcon className="size-4" />
           <span className="sr-only">Search response</span>
         </Button>
-        <Button variant="ghost" size="icon" className="size-6">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          onClick={onCopy}
+          disabled={!bodyText}
+        >
           <CopyIcon className="size-4" />
           <span className="sr-only">Copy response</span>
         </Button>
@@ -201,33 +356,24 @@ function ResponseBodyToolbar({ contentType }: { contentType?: string }) {
   )
 }
 
-function ResponseCodeView({ text }: { text: string }) {
-  const lines = text.split("\n")
-
+const ResponseCodeView = React.forwardRef<
+  BodyEditorHandle,
+  {
+    text: string
+    contentType?: string
+    lineWrapping: boolean
+  }
+>(function ResponseCodeView({ text, contentType, lineWrapping }, ref) {
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <div className="grid grid-cols-[5rem_minmax(0,1fr)] px-7 text-sm leading-7">
-        {lines.map((line, index) => (
-          <Line key={`${index}-${line}`} line={line} number={index + 1} />
-        ))}
-      </div>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+    <BodyEditor
+      ref={ref}
+      value={text}
+      contentType={contentType}
+      readOnly
+      lineWrapping={lineWrapping}
+    />
   )
-}
-
-function Line({ line, number }: { line: string; number: number }) {
-  return (
-    <>
-      <div className="pr-7 text-right text-blue-700 select-none dark:text-sky-400">
-        {number}
-      </div>
-      <pre className="min-w-0 whitespace-pre text-foreground">
-        <code>{line}</code>
-      </pre>
-    </>
-  )
-}
+})
 
 function HeaderList({
   headers,

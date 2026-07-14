@@ -28,8 +28,15 @@ import {
 import { formatSchema } from "@/lib/openapi"
 import type { ApiOperation, ApiResponse } from "@/lib/openapi"
 import { cn } from "@/lib/utils"
+import { BodyEditor } from "./body-editor"
 
-export function DocsPanel({ operation }: { operation: ApiOperation }) {
+export function DocsPanel({
+  operation,
+  curlCommand,
+}: {
+  operation: ApiOperation
+  curlCommand?: string
+}) {
   return (
     <section className="flex max-w-6xl flex-col gap-1">
       <div>
@@ -37,6 +44,7 @@ export function DocsPanel({ operation }: { operation: ApiOperation }) {
           {operation.description ?? operation.summary}
         </p>
       </div>
+      {curlCommand ? <CurlExample command={curlCommand} /> : null}
       <div className="overflow-hidden rounded-sm">
         <div className="py-2 pt-0">
           <h6 className="mt-3 text-[13px] font-normal tracking-normal text-foreground/70">
@@ -79,6 +87,17 @@ export function DocsPanel({ operation }: { operation: ApiOperation }) {
   )
 }
 
+export function CurlExample({ command }: { command: string }) {
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      <h6 className="text-[13px] font-normal text-foreground/70">cURL</h6>
+      <div className="h-44 overflow-hidden rounded-md border border-border bg-card">
+        <BodyEditor value={command} contentType="text/x-shellscript" readOnly />
+      </div>
+    </div>
+  )
+}
+
 function ResponseDetails({ response }: { response: ApiResponse }) {
   const defaultContentType = response.contentTypes[0] ?? "none"
   const hasContent = response.contentTypes.length > 0
@@ -117,12 +136,13 @@ function ResponseDetails({ response }: { response: ApiResponse }) {
               <TabsTrigger value="schema">Schema</TabsTrigger>
             </TabsList>
             <TabsContent value="example">
-              <ScrollArea className="max-h-80 rounded-md border bg-muted">
-                <pre className="p-4 text-sm leading-6 text-foreground">
-                  {JSON.stringify(response.example, null, 2)}
-                </pre>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
+              <div className="h-80 overflow-hidden rounded-md border bg-muted">
+                <BodyEditor
+                  value={JSON.stringify(response.example, null, 2)}
+                  contentType={defaultContentType}
+                  readOnly
+                />
+              </div>
             </TabsContent>
             <TabsContent value="schema">
               <ResponseSchema response={response} />

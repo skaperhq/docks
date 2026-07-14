@@ -104,7 +104,9 @@ function EditableKeyValueRow({
         {isPlaceholder ? null : (
           <Checkbox
             checked={row.enabled !== false}
-            onCheckedChange={(checked) => onChange({ enabled: checked === true })}
+            onCheckedChange={(checked) =>
+              onChange({ enabled: checked === true })
+            }
             className="mx-auto"
             aria-label={`Enable ${row.key || "row"}`}
           />
