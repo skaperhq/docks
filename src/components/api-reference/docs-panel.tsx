@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronDownIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, CopyIcon } from "lucide-react"
 import {
   Accordion,
   AccordionContent,
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -91,9 +92,11 @@ export function CurlExample({ command }: { command: string }) {
   return (
     <div className="mt-4 flex flex-col gap-2">
       <h6 className="text-[13px] font-normal text-foreground/70">cURL</h6>
-      <div className="h-44 overflow-hidden rounded-md border border-border bg-card">
-        <BodyEditor value={command} contentType="text/x-shellscript" readOnly />
-      </div>
+      <ReadOnlyCodeBlock
+        value={command}
+        contentType="text/x-shellscript"
+        copyLabel="Copy cURL"
+      />
     </div>
   )
 }
@@ -136,16 +139,22 @@ function ResponseDetails({ response }: { response: ApiResponse }) {
               <TabsTrigger value="schema">Schema</TabsTrigger>
             </TabsList>
             <TabsContent value="example">
-              <div className="h-80 overflow-hidden rounded-md border bg-muted">
-                <BodyEditor
-                  value={JSON.stringify(response.example, null, 2)}
-                  contentType={defaultContentType}
-                  readOnly
-                />
-              </div>
+              <ReadOnlyCodeBlock
+                value={JSON.stringify(response.example, null, 2)}
+                contentType={defaultContentType}
+                copyLabel="Copy example value"
+              />
             </TabsContent>
             <TabsContent value="schema">
-              <ResponseSchema response={response} />
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-end">
+                  <CopyButton
+                    value={JSON.stringify(response.schema ?? {}, null, 2)}
+                    label="Copy response schema"
+                  />
+                </div>
+                <ResponseSchema response={response} />
+              </div>
             </TabsContent>
           </Tabs>
         </>
@@ -155,6 +164,96 @@ function ResponseDetails({ response }: { response: ApiResponse }) {
         </p>
       )}
     </div>
+  )
+}
+
+function ReadOnlyCodeBlock({
+  value,
+  contentType,
+  copyLabel,
+}: {
+  value: string
+  contentType: string
+  copyLabel: string
+}) {
+  return (
+    <div
+      className="relative overflow-hidden rounded-md border border-border bg-background"
+      style={{ height: getCodeBlockHeight(value) }}
+    >
+      <BodyEditor
+        value={value}
+        contentType={contentType}
+        readOnly
+        className="h-full [&_.cm-content]:pr-12"
+      />
+      <CopyButton
+        value={value}
+        label={copyLabel}
+        className="absolute top-2 right-2 z-10 bg-background/90 shadow-sm backdrop-blur-sm"
+      />
+    </div>
+  )
+}
+
+function CopyButton({
+  value,
+  label,
+  className,
+}: {
+  value: string
+  label: string
+  className?: string
+}) {
+  const [copied, setCopied] = React.useState(false)
+  const resetTimerRef = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current)
+    }
+  }, [])
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current)
+      resetTimerRef.current = window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon-sm"
+      className={cn("size-7 rounded-md", className)}
+      aria-label={copied ? `${label} copied` : label}
+      title={copied ? "Copied" : label}
+      onClick={handleCopy}
+    >
+      {copied ? (
+        <CheckIcon className="size-3.5 text-emerald-500" />
+      ) : (
+        <CopyIcon className="size-3.5" />
+      )}
+    </Button>
+  )
+}
+
+export function getCodeBlockHeight(value: string) {
+  const lineCount = Math.max(1, value.split("\n").length)
+  // CodeMirror uses 12px vertical content padding, plus the block border.
+  // Keep a small allowance so the final line never sits under the border.
+  const editorChromeHeight = 28
+  const lineHeight = 20.15
+
+  return Math.min(
+    360,
+    Math.max(72, Math.ceil(lineCount * lineHeight + editorChromeHeight))
   )
 }
 

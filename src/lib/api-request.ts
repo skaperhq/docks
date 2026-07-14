@@ -136,6 +136,16 @@ function buildRequestBody({
     const formData = new FormData()
     for (const row of body.formDataRows ?? []) {
       if (row.enabled === false || !row.key.trim()) continue
+      if (row.type === "file") {
+        if (row.file) {
+          formData.append(
+            row.key.trim(),
+            row.file,
+            row.fileName || "upload.bin"
+          )
+        }
+        continue
+      }
       formData.append(row.key.trim(), resolveVariables(row.value))
     }
     return formData
@@ -149,6 +159,15 @@ function buildRequestBody({
     }
     headers.set("Content-Type", "application/x-www-form-urlencoded")
     return params
+  }
+
+  if (body.mode === "graphql") {
+    const graphqlBody = serializeGraphqlBody(body, resolveVariables)
+    if (!graphqlBody) {
+      return undefined
+    }
+    headers.set("Content-Type", "application/json")
+    return graphqlBody
   }
 
   const rawBody = resolveVariables(body.value)
@@ -172,6 +191,8 @@ function resolveBodyDraft(
   return {
     ...serializableBody,
     value: resolveVariables(body.value),
+    graphqlQuery: resolveVariables(body.graphqlQuery ?? ""),
+    graphqlVariables: resolveVariables(body.graphqlVariables ?? ""),
     formDataRows: (body.formDataRows ?? []).map((row) =>
       resolveRow(row, resolveVariables)
     ),
@@ -181,12 +202,39 @@ function resolveBodyDraft(
   }
 }
 
+export function serializeGraphqlBody(
+  body: RequestBodyDraft,
+  resolveVariables: (text: string) => string = (value) => value
+) {
+  const query = resolveVariables(body.graphqlQuery ?? "").trim()
+  const variablesText = resolveVariables(body.graphqlVariables ?? "").trim()
+
+  if (!query && !variablesText) {
+    return ""
+  }
+
+  const payload: { query: string; variables?: unknown } = { query }
+  if (variablesText) {
+    try {
+      payload.variables = JSON.parse(variablesText)
+    } catch {
+      // Keep the editor and request preview usable while the user is midway
+      // through entering JSON. The server can still report invalid variables
+      // if the incomplete value is sent.
+      payload.variables = variablesText
+    }
+  }
+
+  return JSON.stringify(payload)
+}
+
 function resolveRow(
   row: KeyValueRow,
   resolveVariables: (text: string) => string
 ): KeyValueRow {
+  const { file: _file, ...serializableRow } = row
   return {
-    ...row,
+    ...serializableRow,
     key: resolveVariables(row.key),
     value: resolveVariables(row.value),
     description: row.description,

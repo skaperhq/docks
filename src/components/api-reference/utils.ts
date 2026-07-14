@@ -49,6 +49,29 @@ export function getHeaderRows(operation: ApiOperation): KeyValueRow[] {
   return rows
 }
 
+/**
+ * Restores the template for system-generated bearer headers that older
+ * versions persisted after resolving the active environment secret.
+ */
+export function restoreGeneratedHeaderTemplates(
+  headers: KeyValueRow[]
+): KeyValueRow[] {
+  return headers.map((header) => {
+    const isGeneratedBearerHeader =
+      header.key.trim().toLowerCase() === "authorization" &&
+      header.description === "Generated from bearerAuth security"
+
+    if (!isGeneratedBearerHeader || header.value.includes("{{")) {
+      return header
+    }
+
+    return {
+      ...header,
+      value: "Bearer {{access_token}}",
+    }
+  })
+}
+
 export function getMethodClassName(method: string) {
   switch (method) {
     case "GET":
@@ -109,7 +132,10 @@ export function prettyPrintJson(value: string) {
 
 export function shouldCreateRow(patch: Partial<KeyValueRow>) {
   return Boolean(
-    patch.key?.trim() || patch.value?.trim() || patch.description?.trim()
+    patch.key?.trim() ||
+    patch.value?.trim() ||
+    patch.description?.trim() ||
+    patch.type === "file"
   )
 }
 

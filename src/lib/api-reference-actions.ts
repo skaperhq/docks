@@ -57,6 +57,7 @@ type SerializableKeyValueRow = {
   minLength?: number
   maxLength?: number
   example?: any
+  fileName?: string
 }
 
 type SerializableRequestDraft = {
@@ -69,6 +70,8 @@ type SerializableRequestDraft = {
     formDataRows?: SerializableKeyValueRow[]
     urlEncodedRows?: SerializableKeyValueRow[]
     binaryFileName?: string
+    graphqlQuery?: string
+    graphqlVariables?: string
   }
 }
 

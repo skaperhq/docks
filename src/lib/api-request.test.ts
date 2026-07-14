@@ -149,6 +149,85 @@ describe("buildFetchRequest", () => {
     expect(request.headers.has("content-type")).toBe(false)
   })
 
+  test("sends file-backed form-data rows", () => {
+    const file = new Blob(["avatar"], { type: "image/png" })
+    const request = buildFetchRequest({
+      baseUrl: "https://api.example.com/upload",
+      method: "POST",
+      draft: createDraft({
+        body: {
+          mode: "form-data",
+          contentType: "multipart/form-data",
+          value: "",
+          formDataRows: [
+            {
+              key: "avatar",
+              value: "avatar.png",
+              description: "",
+              type: "file",
+              fileName: "avatar.png",
+              file,
+            },
+          ],
+        },
+      }),
+      resolveVariables,
+      environment: null,
+    })
+
+    expect((request.body as FormData).get("avatar")).toBeInstanceOf(Blob)
+    expect(request.requestSnapshot.body.formDataRows?.[0]?.file).toBeUndefined()
+    expect(request.requestSnapshot.body.formDataRows?.[0]?.fileName).toBe(
+      "avatar.png"
+    )
+  })
+
+  test("serializes GraphQL query and variables as JSON", () => {
+    const request = buildFetchRequest({
+      baseUrl: "https://api.example.com/graphql",
+      method: "POST",
+      draft: createDraft({
+        body: {
+          mode: "graphql",
+          contentType: "application/json",
+          value: "",
+          graphqlQuery: "query User($id: ID!) { user(id: $id) { name } }",
+          graphqlVariables: '{"id":"{{id}}"}',
+        },
+      }),
+      resolveVariables,
+      environment: null,
+    })
+
+    expect(JSON.parse(String(request.body))).toEqual({
+      query: "query User($id: ID!) { user(id: $id) { name } }",
+      variables: { id: "42" },
+    })
+    expect(request.headers.get("content-type")).toBe("application/json")
+  })
+
+  test("keeps GraphQL previews usable while variables JSON is incomplete", () => {
+    const request = buildFetchRequest({
+      baseUrl: "https://api.example.com/graphql",
+      method: "POST",
+      draft: createDraft({
+        body: {
+          mode: "graphql",
+          contentType: "application/json",
+          value: "",
+          graphqlQuery: "query Viewer { viewer { id } }",
+          graphqlVariables: '{"includeProfile":',
+        },
+      }),
+      resolveVariables,
+      environment: null,
+    })
+
+    expect(JSON.parse(String(request.body)).variables).toBe(
+      '{"includeProfile":'
+    )
+  })
+
   test("sends binary bodies with their file content type", () => {
     const payload = new Blob(["binary payload"], {
       type: "application/octet-stream",

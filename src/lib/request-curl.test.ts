@@ -27,6 +27,24 @@ describe("buildCurlCommand", () => {
     expect(command).toContain("O'\\''Reilly")
   })
 
+  test("serializes GraphQL bodies", () => {
+    const command = buildCurlCommand(
+      createSnapshot({
+        method: "POST",
+        body: {
+          mode: "graphql",
+          contentType: "application/json",
+          value: "",
+          graphqlQuery: "query Viewer { viewer { id } }",
+          graphqlVariables: '{"active":true}',
+        },
+      })
+    )
+
+    expect(command).toContain("query Viewer")
+    expect(command).toContain('"variables":{"active":true}')
+  })
+
   test("serializes form and urlencoded rows", () => {
     const form = buildCurlCommand(
       createSnapshot({

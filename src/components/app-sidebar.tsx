@@ -1,7 +1,6 @@
 "use client"
 
 import type { ApiOperation, ApiOperationGroup } from "@/lib/openapi"
-import { Link, useRouterState } from "@tanstack/react-router"
 import { useEnvironment } from "@/components/environment-provider"
 import {
   ArrowLeftRightIcon,
@@ -72,7 +71,9 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   customRequests: PersistedCustomRequest[]
   selectedSavedResponseId?: string | null
   selectedRequestId?: string | null
+  activePage?: "workspace" | "environment"
   onSelectOverview: () => void
+  onSelectEnvironment: () => void
   onSearchQueryChange: (query: string) => void
   onSelectOperation: (operation: ApiOperation) => void
   onSelectSavedResponse: (response: SavedResponseSummary) => void
@@ -95,7 +96,9 @@ export function AppSidebar({
   customRequests,
   selectedSavedResponseId,
   selectedRequestId,
+  activePage = "workspace",
   onSelectOverview,
+  onSelectEnvironment,
   onSearchQueryChange,
   onSelectOperation,
   onSelectSavedResponse,
@@ -107,10 +110,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const { environments, activeEnvironmentId, setActiveEnvironmentId } =
     useEnvironment()
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  })
-  const isOverviewRoute = pathname === "/"
+  const isOverviewRoute = activePage === "workspace"
   const [requestDialogOpen, setRequestDialogOpen] = React.useState(false)
   const [newRequestName, setNewRequestName] = React.useState("")
   const [newRequestUrl, setNewRequestUrl] = React.useState("")
@@ -142,7 +142,10 @@ export function AppSidebar({
   }, [customRequests, searchQuery])
 
   React.useEffect(() => {
-    if (pathname !== "/" || (!selectedOperationId && !selectedRequestId)) {
+    if (
+      activePage !== "workspace" ||
+      (!selectedOperationId && !selectedRequestId)
+    ) {
       setHttpOpen(false)
       setWebsocketOpen(false)
       return
@@ -154,7 +157,7 @@ export function AppSidebar({
     const transport = selectedCustomRequest?.transport ?? "http"
     setHttpOpen(transport === "http")
     setWebsocketOpen(transport === "websocket")
-  }, [customRequests, pathname, selectedOperationId, selectedRequestId])
+  }, [activePage, customRequests, selectedOperationId, selectedRequestId])
 
   return (
     <Sidebar {...props}>
@@ -252,15 +255,21 @@ export function AppSidebar({
             <HomeIcon className="w-4 text-sidebar-foreground/60" />
             <span className="truncate text-[13px] font-normal">Overview</span>
           </Button>
-          <Link
-            to="/environment"
-            className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-normal text-sidebar-foreground/80 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring [&.active]:bg-sidebar-accent [&.active]:font-medium [&.active]:text-sidebar-accent-foreground"
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onSelectEnvironment}
+            className={cn(
+              "w-full justify-start gap-2 px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              activePage === "environment" &&
+                "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+            )}
           >
             <Container className="w-4 text-sidebar-foreground/60" />
             <span className="truncate text-[13px] font-normal">
               Environment
             </span>
-          </Link>
+          </Button>
         </SidebarGroup>
 
         <SidebarGroup className="p-0.5 px-2 pt-0">
@@ -478,13 +487,7 @@ function TransportSection({
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="ml-5 border-l border-sidebar-border/80 pl-2">
-          <FolderSection
-            label="OpenAPI"
-            count={label === "HTTP" ? apiOperations.length : 0}
-            defaultOpen={label === "HTTP"}
-          >
-            {openApiContent}
-          </FolderSection>
+          {openApiContent}
           <FolderSection
             label="Custom"
             count={customRequests.length}
@@ -571,70 +574,68 @@ function OpenApiRequestTree({
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
 }) {
   return (
-    <div className="ml-5 border-l border-sidebar-border/80 pl-2">
-      <SidebarMenu className="gap-0.5 pt-1">
-        {groups.length > 0 ? (
-          groups.map((group) => (
-            <SidebarMenuItem key={group.name}>
-              <Collapsible
-                className="group/folder [&[data-state=open]>button>svg:first-child]:rotate-90"
-                defaultOpen={group.operations.some(
-                  (operation) => operation.id === selectedOperationId
-                )}
-              >
-                <CollapsibleTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    data-api-group={group.name}
-                    className="h-9 w-full justify-start gap-2 px-2 font-medium text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  >
-                    <ChevronRightIcon className="w-4 transition-transform" />
-                    <FolderClosedIcon className="w-4 text-sidebar-foreground/60" />
-                    <span className="truncate text-[13px] font-normal">
-                      {group.name}
-                    </span>
-                    <span className="ml-auto text-[11px] text-sidebar-foreground/60 tabular-nums">
-                      {group.operations.length}
-                    </span>
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="ml-5 flex flex-col border-l border-sidebar-border/80 py-1 pl-2">
-                    {group.operations.map((operation) => (
-                      <OperationItem
-                        key={operation.id}
-                        operation={operation}
-                        isActive={operation.id === selectedOperationId}
-                        savedResponses={savedResponsesByOperation.get(
-                          operation.id
-                        )}
-                        selectedSavedResponseId={selectedSavedResponseId}
-                        onSelectOperation={onSelectOperation}
-                        onSelectSavedResponse={onSelectSavedResponse}
-                        onDeleteSavedResponse={onDeleteSavedResponse}
-                      />
-                    ))}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </SidebarMenuItem>
-          ))
-        ) : (
-          <SidebarMenuItem>
-            <div className="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-sidebar-foreground/60">
-              <span>No matching OpenAPI requests</span>
-            </div>
+    <SidebarMenu className="gap-0.5 pt-1">
+      {groups.length > 0 ? (
+        groups.map((group) => (
+          <SidebarMenuItem key={group.name}>
+            <Collapsible
+              className="group/folder [&[data-state=open]>button>svg:first-child]:rotate-90"
+              defaultOpen={group.operations.some(
+                (operation) => operation.id === selectedOperationId
+              )}
+            >
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  data-api-group={group.name}
+                  className="h-9 w-full justify-start gap-2 px-2 font-medium text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                  <ChevronRightIcon className="w-4 transition-transform" />
+                  <FolderClosedIcon className="w-4 text-sidebar-foreground/60" />
+                  <span className="truncate text-[13px] font-normal">
+                    {group.name}
+                  </span>
+                  <span className="ml-auto text-[11px] text-sidebar-foreground/60 tabular-nums">
+                    {group.operations.length}
+                  </span>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="ml-5 flex flex-col border-l border-sidebar-border/80 py-1 pl-2">
+                  {group.operations.map((operation) => (
+                    <OperationItem
+                      key={operation.id}
+                      operation={operation}
+                      isActive={operation.id === selectedOperationId}
+                      savedResponses={savedResponsesByOperation.get(
+                        operation.id
+                      )}
+                      selectedSavedResponseId={selectedSavedResponseId}
+                      onSelectOperation={onSelectOperation}
+                      onSelectSavedResponse={onSelectSavedResponse}
+                      onDeleteSavedResponse={onDeleteSavedResponse}
+                    />
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </SidebarMenuItem>
-        )}
-      </SidebarMenu>
-    </div>
+        ))
+      ) : (
+        <SidebarMenuItem>
+          <div className="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-sidebar-foreground/60">
+            <span>No matching OpenAPI requests</span>
+          </div>
+        </SidebarMenuItem>
+      )}
+    </SidebarMenu>
   )
 }
 
 function EmptyProtocolFolder({ label }: { label: string }) {
   return (
-    <div className="ml-5 border-l border-sidebar-border/80 px-2 py-1.5 text-[12px] text-sidebar-foreground/50">
+    <div className="px-2 py-1.5 text-[12px] text-sidebar-foreground/50">
       No {label} requests in the OpenAPI document.
     </div>
   )
@@ -654,7 +655,7 @@ function CustomRequestItem({
   return (
     <div
       className={cn(
-        "group/custom-request flex min-h-8 w-full items-center gap-1.5 rounded-none py-1 pr-1 pl-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "group/custom-request flex min-h-8 w-full items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
       )}
     >
@@ -745,7 +746,7 @@ function OperationItem({
         data-operation-id={operation.id}
         onClick={() => onSelectOperation(operation)}
         className={cn(
-          "min-h-8 w-full justify-start gap-0.5 rounded-none py-1 pr-2 pl-2 font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "min-h-8 w-full justify-start gap-0.5 rounded-md py-1 pr-2 pl-2 font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
         )}
       >
@@ -774,7 +775,7 @@ function OperationItem({
     >
       <div
         className={cn(
-          "flex min-h-8 w-full items-center rounded-none py-1 pr-2 pl-0 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "flex min-h-8 w-full items-center rounded-md py-1 pr-2 pl-0 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           isActive &&
             !savedResponseIsActive &&
             "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -815,7 +816,7 @@ function OperationItem({
       </div>
 
       <CollapsibleContent>
-        <div className="flex flex-col gap-0.5 py-1">
+        <div className="ml-2 flex flex-col gap-0.5 border-l border-sidebar-border/80 py-1 pl-3">
           {savedResponseItems.map((savedResponse) => {
             const responseIsActive =
               savedResponse.id === selectedSavedResponseId
@@ -824,7 +825,7 @@ function OperationItem({
               <div
                 key={savedResponse.id}
                 className={cn(
-                  "group/response ml-6 flex min-h-8 items-center gap-1 rounded-md border-l border-sidebar-border/80 py-1 pr-1 pl-5 transition-colors",
+                  "group/response flex min-h-8 items-center gap-1 rounded-md py-1 pr-1 pl-2 transition-colors",
                   responseIsActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

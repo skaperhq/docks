@@ -9,6 +9,13 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import type { KeyValueRow } from "./types"
 import {
@@ -23,12 +30,14 @@ export function KeyValueTable({
   rows,
   onRowsChange,
   emptyMessage,
+  allowFileValues = false,
 }: {
   title: string
   rows: KeyValueRow[]
   badge?: string
   emptyMessage: string
   onRowsChange: (rows: KeyValueRow[]) => void
+  allowFileValues?: boolean
 }) {
   function updateRow(index: number, patch: Partial<KeyValueRow>) {
     const nextRows =
@@ -79,6 +88,7 @@ export function KeyValueTable({
                 key={`${title}-${index}`}
                 row={row}
                 isPlaceholder={index === rows.length}
+                allowFileValues={allowFileValues}
                 onChange={(patch) => updateRow(index, patch)}
               />
             ))}
@@ -92,10 +102,12 @@ export function KeyValueTable({
 function EditableKeyValueRow({
   row,
   isPlaceholder,
+  allowFileValues,
   onChange,
 }: {
   row: KeyValueRow
   isPlaceholder?: boolean
+  allowFileValues: boolean
   onChange: (patch: Partial<KeyValueRow>) => void
 }) {
   return (
@@ -113,26 +125,72 @@ function EditableKeyValueRow({
         )}
       </TableCell>
       <TableCell className="h-8.5 border-r border-border px-0 py-0">
-        <Input
-          value={row.key}
-          onChange={(event) => onChange({ key: event.target.value })}
-          placeholder="Key"
-          className={cn(
-            leanCellInputClassName,
-            isPlaceholder && "text-[12px] font-normal text-muted-foreground/60"
-          )}
-        />
+        <div className="flex h-full min-w-0 items-center">
+          <Input
+            value={row.key}
+            onChange={(event) => onChange({ key: event.target.value })}
+            placeholder="Key"
+            className={cn(
+              leanCellInputClassName,
+              "min-w-0 flex-1",
+              allowFileValues && "border-r border-border",
+              isPlaceholder &&
+                "text-[12px] font-normal text-muted-foreground/60"
+            )}
+          />
+          {allowFileValues ? (
+            <Select
+              value={row.type === "file" ? "file" : "text"}
+              onValueChange={(type) =>
+                onChange({
+                  type,
+                  value: type === "file" ? (row.fileName ?? "") : row.value,
+                  file: type === "file" ? row.file : undefined,
+                  fileName: type === "file" ? row.fileName : undefined,
+                })
+              }
+            >
+              <SelectTrigger
+                aria-label={`Value type for ${row.key || "new form-data row"}`}
+                className="h-full w-24 shrink-0 rounded-none border-0 bg-transparent px-3 text-xs shadow-none"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text</SelectItem>
+                <SelectItem value="file">File</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell className="h-8.5 border-r border-border px-0 py-0">
-        <Input
-          value={row.value}
-          onChange={(event) => onChange({ value: event.target.value })}
-          placeholder="Value"
-          className={cn(
-            leanCellInputClassName,
-            isPlaceholder && "text-[12px] font-normal text-muted-foreground/60"
-          )}
-        />
+        {allowFileValues && row.type === "file" ? (
+          <Input
+            type="file"
+            aria-label={`Select file for ${row.key || "form-data row"}`}
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              onChange({
+                file,
+                fileName: file?.name ?? "",
+                value: file?.name ?? "",
+              })
+            }}
+            className={leanCellInputClassName}
+          />
+        ) : (
+          <Input
+            value={row.value}
+            onChange={(event) => onChange({ value: event.target.value })}
+            placeholder="Value"
+            className={cn(
+              leanCellInputClassName,
+              isPlaceholder &&
+                "text-[12px] font-normal text-muted-foreground/60"
+            )}
+          />
+        )}
       </TableCell>
       <TableCell className="h-8.5 border-border px-0 py-0">
         <Input

@@ -2,6 +2,7 @@ import type {
   KeyValueRow,
   SavedRequestSnapshot,
 } from "@/components/api-reference/types"
+import { serializeGraphqlBody } from "./api-request"
 
 /**
  * Creates a reproducible cURL command from the exact request snapshot shown in
@@ -39,6 +40,14 @@ function appendBody(parts: string[], snapshot: SavedRequestSnapshot) {
     return
   }
 
+  if (body.mode === "graphql") {
+    const graphqlBody = serializeGraphqlBody(body)
+    if (graphqlBody) {
+      parts.push(`--data-raw ${shellQuote(graphqlBody)}`)
+    }
+    return
+  }
+
   if (body.mode === "x-www-form-urlencoded") {
     for (const row of enabledRows(body.urlEncodedRows ?? [])) {
       parts.push(
@@ -50,7 +59,9 @@ function appendBody(parts: string[], snapshot: SavedRequestSnapshot) {
 
   if (body.mode === "form-data") {
     for (const row of enabledRows(body.formDataRows ?? [])) {
-      parts.push(`--form ${shellQuote(`${row.key.trim()}=${row.value}`)}`)
+      const value =
+        row.type === "file" ? `@${row.fileName || row.value}` : row.value
+      parts.push(`--form ${shellQuote(`${row.key.trim()}=${value}`)}`)
     }
     return
   }

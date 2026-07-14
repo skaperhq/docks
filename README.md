@@ -1,63 +1,77 @@
 # Skaper
 
-Skaper is an API documentation and request workspace for OpenAPI specs. The MVP is designed to mount as a route inside a Node.js API, with browser-first persistence so developers can add docs without provisioning a database.
+Skaper is a self-contained OpenAPI documentation and API request UI for Node.js routes. Give it the URL of an OpenAPI JSON document and mount the returned handler in your server.
 
-## MVP Storage Model
+## Install
 
-The default storage is IndexedDB:
-
-- request tabs
-- edited request params, headers, and bodies
-- environments and variables
-- saved responses
-- response panel preferences
-
-IndexedDB keeps the package lightweight because it does not need a writable server filesystem, migrations, or native install steps. It is scoped to the user's browser profile, which is usually the right default for API docs embedded in a developer's app.
-
-## Bring Your Own Storage
-
-Package consumers can replace the default browser storage with their own adapter. This is the hook for a Postgres-backed implementation without making Skaper depend on a Postgres driver:
-
-```ts
-import {
-  createPostgresStorageAdapter,
-  setDocksStorageAdapter,
-} from "just-skaper/storage"
-
-setDocksStorageAdapter(
-  createPostgresStorageAdapter({
-    async getApiWorkspace() {
-      // read collections, custom requests, tabs, and saved responses
-    },
-    async upsertCustomRequest({ data }) {
-      // write to your Postgres tables
-      return data
-    },
-    // implement the rest of the StorageAdapter contract
-  })
-)
+```bash
+npm install skaper
 ```
 
-The adapter boundary keeps Skaper npm-friendly: IndexedDB works out of the box for embedded docs, while teams that need shared persistence can pass a Postgres implementation from their application layer.
+Skaper does not require a React component, a CSS import, static asset hosting, or any runtime dependencies in the consuming project.
 
-## Request Protocols
+## Hono
 
-HTTP requests support standard request/response behavior and Server-Sent Events (SSE). SSE is stored as HTTP with `mode: "sse"` and uses the browser's native `EventSource`, so it is GET-only and sends URL/query parameters and browser-managed cookies rather than custom headers or a request body. WebSocket remains a separate transport.
+```ts
+import { Hono } from "hono"
+import { skaperUI } from "skaper"
 
-## Current App
+const swagger = new Hono()
+
+swagger.get("/", skaperUI({ url: "/docs/openapi.json" }))
+```
+
+You can also mount the handler directly on an existing app:
+
+```ts
+app.get("/docs", skaperUI({ url: "/docs/openapi.json" }))
+```
+
+## Express
+
+```ts
+import express from "express"
+import { skaperUI } from "skaper"
+
+const app = express()
+
+app.get("/docs", skaperUI({ url: "/docs/openapi.json" }))
+```
+
+The configured URL is fetched by the browser, so it can be relative to the host application or an absolute URL with the appropriate CORS policy.
+
+## Options
+
+```ts
+skaperUI({
+  url: "/docs/openapi.json",
+  title: "Acme API",
+  nonce: "your-csp-nonce",
+})
+```
+
+- `url` is required and points to the OpenAPI JSON document.
+- `title` sets the generated HTML document title.
+- `nonce` applies a Content Security Policy nonce to the embedded style and module script.
+
+Skaper serves one complete HTML document. Its browser code and visual styles are embedded in that document, so there is no CSS or JavaScript asset for the host application to import or serve.
+
+Request tabs, environments, variables, saved responses, and response preferences use IndexedDB in the developer's browser. No server database or writable filesystem is required.
+
+## Development
 
 ```bash
 npm run dev
 npm run lint
 npm run typecheck
-npm run test
+npm test
 ```
 
-The app currently renders the mock OpenAPI spec from `src/data/mock-openapi.json`. The next package step is to load the spec from route configuration instead of importing a fixed JSON file.
+Create an installable tarball with:
 
-## Contributing
-
-Run `npm test` for the unit suite and `npm run typecheck` before opening a pull request. Public APIs use TSDoc comments so their contracts appear in editors and generated documentation; implementation comments are reserved for behavior that is not clear from the code itself.
+```bash
+npm run package
+```
 
 ## License
 

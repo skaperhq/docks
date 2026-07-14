@@ -79,6 +79,7 @@ import {
   getBgMethodClassName,
   formatBodyExample,
   parameterToRow,
+  restoreGeneratedHeaderTemplates,
 } from "@/components/api-reference/utils"
 
 export const Route = createFileRoute("/")({
@@ -118,6 +119,30 @@ type WorkspaceRequest = {
 function App() {
   const { operationId } = Route.useSearch()
   const navigate = useNavigate()
+
+  return (
+    <WorkspacePage
+      operationId={operationId}
+      onOperationChange={(nextOperationId) =>
+        navigate({
+          to: "/",
+          search: { operationId: nextOperationId },
+        })
+      }
+      onSelectEnvironment={() => navigate({ to: "/environment" })}
+    />
+  )
+}
+
+export function WorkspacePage({
+  operationId,
+  onOperationChange,
+  onSelectEnvironment,
+}: {
+  operationId?: string
+  onOperationChange: (operationId?: string) => void
+  onSelectEnvironment: () => void
+}) {
   const { activeEnvironment, resolveVariables } = useEnvironment()
 
   const [searchQuery, setSearchQuery] = React.useState("")
@@ -198,7 +223,7 @@ function App() {
       ? `${resolvedBaseUrl.replace(/\/$/, "")}/${requestUrl.replace(/^\//, "")}`
       : requestUrl
 
-  const rawHeaders = React.useMemo(
+  const defaultHeaders = React.useMemo(
     () =>
       selectedRequest?.operation
         ? getHeaderRows(selectedRequest.operation)
@@ -215,13 +240,6 @@ function App() {
     ],
     [selectedRequest?.operation]
   )
-
-  const defaultHeaders = React.useMemo(() => {
-    return rawHeaders.map((header) => ({
-      ...header,
-      value: resolveVariables(header.value),
-    }))
-  }, [rawHeaders, resolveVariables])
 
   const defaultBody = React.useMemo<RequestBodyDraft>(
     () => ({
@@ -330,7 +348,13 @@ function App() {
         )
         setRequestDrafts(
           Object.fromEntries(
-            validRequestTabs.map((tab) => [tab.operationId, tab.draft])
+            validRequestTabs.map((tab) => [
+              tab.operationId,
+              {
+                ...tab.draft,
+                headers: restoreGeneratedHeaderTemplates(tab.draft.headers),
+              },
+            ])
           )
         )
         setRequestTabByOperation(
@@ -422,11 +446,11 @@ function App() {
     if (!options.savedResponse) {
       setSelectedSavedResponseId(null)
     }
-    navigate({ to: "/", search: { operationId: nextOperationId } })
+    onOperationChange(nextOperationId)
   }
 
   function selectOverview() {
-    navigate({ to: "/", search: { operationId: undefined } })
+    onOperationChange(undefined)
   }
 
   async function handleCreateCustomRequest(input: {
@@ -698,7 +722,10 @@ function App() {
         }))
         setRequestDrafts((drafts) => ({
           ...drafts,
-          [response.operationId]: requestDraftFromSnapshot(requestSnapshot),
+          [response.operationId]: {
+            ...requestDraftFromSnapshot(requestSnapshot),
+            headers: restoreGeneratedHeaderTemplates(requestSnapshot.headers),
+          },
         }))
       }
       selectOperation(response.operationId, { savedResponse: true })
@@ -875,6 +902,7 @@ function App() {
   return (
     <SidebarProvider>
       <AppSidebar
+        activePage="workspace"
         selectedOperationId={selectedOperation?.id ?? null}
         selectedRequestId={selectedRequest?.id ?? null}
         searchQuery={searchQuery}
@@ -882,6 +910,7 @@ function App() {
         customRequests={customRequests}
         selectedSavedResponseId={selectedSavedResponseId}
         onSelectOverview={selectOverview}
+        onSelectEnvironment={onSelectEnvironment}
         onSearchQueryChange={setSearchQuery}
         onSelectOperation={(operation) => {
           selectOperation(operation.id)
@@ -1152,9 +1181,9 @@ function CustomRequestAddressBar({
       </Select>
       <Select
         value={request.mode}
-        onValueChange={(value) =>
+        onValueChange={(value: RequestMode) =>
           onUpdateCustomRequest(request, {
-            mode: value as RequestMode,
+            mode: value,
           })
         }
         disabled={request.transport !== "http"}

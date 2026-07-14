@@ -8,6 +8,7 @@ import {
   normalizeKeyValueRow,
   parameterToRow,
   prettyPrintJson,
+  restoreGeneratedHeaderTemplates,
   shouldCreateRow,
 } from "./utils"
 
@@ -61,6 +62,35 @@ describe("API reference utilities", () => {
       "Content-Type",
       "X-Tenant",
     ])
+    expect(getHeaderRows(operation)[0]?.value).toBe("Bearer {{access_token}}")
+  })
+
+  test("restores resolved generated bearer headers without changing custom templates", () => {
+    expect(
+      restoreGeneratedHeaderTemplates([
+        {
+          key: "Authorization",
+          value: "Bearer resolved-secret",
+          description: "Generated from bearerAuth security",
+        },
+        {
+          key: "X-Tenant",
+          value: "{{tenant_id}}",
+          description: "",
+        },
+      ])
+    ).toEqual([
+      {
+        key: "Authorization",
+        value: "Bearer {{access_token}}",
+        description: "Generated from bearerAuth security",
+      },
+      {
+        key: "X-Tenant",
+        value: "{{tenant_id}}",
+        description: "",
+      },
+    ])
   })
 
   test("formats object examples as readable JSON", () => {
@@ -80,6 +110,7 @@ describe("API reference utilities", () => {
       false
     )
     expect(shouldCreateRow({ description: "Generated header" })).toBe(true)
+    expect(shouldCreateRow({ type: "file" })).toBe(true)
   })
 
   test("defaults legacy rows to enabled without changing explicit state", () => {

@@ -27,11 +27,31 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/environment")({
-  component: EnvironmentPage,
+  component: EnvironmentRoutePage,
 })
 
-function EnvironmentPage() {
+function EnvironmentRoutePage() {
   const navigate = useNavigate()
+
+  return (
+    <EnvironmentPage
+      onSelectWorkspace={() =>
+        navigate({ to: "/", search: { operationId: undefined } })
+      }
+      onSelectOperation={(operationId) =>
+        navigate({ to: "/", search: { operationId } })
+      }
+    />
+  )
+}
+
+export function EnvironmentPage({
+  onSelectWorkspace,
+  onSelectOperation,
+}: {
+  onSelectWorkspace: () => void
+  onSelectOperation: (operationId: string) => void
+}) {
   const {
     environments,
     activeEnvironmentId,
@@ -116,30 +136,25 @@ function EnvironmentPage() {
   return (
     <SidebarProvider>
       <AppSidebar
+        activePage="environment"
         selectedOperationId={null}
         searchQuery={searchQuery}
         savedResponses={[]}
         customRequests={[]}
         selectedRequestId={null}
-        onSelectOverview={() => {
-          navigate({ to: "/", search: { operationId: undefined } })
-        }}
+        onSelectOverview={onSelectWorkspace}
+        onSelectEnvironment={() => {}}
         onSearchQueryChange={setSearchQuery}
-        onSelectOperation={(operation) => {
-          navigate({ to: "/", search: { operationId: operation.id } })
-        }}
-        onSelectSavedResponse={(response) => {
-          navigate({ to: "/", search: { operationId: response.operationId } })
-        }}
+        onSelectOperation={(operation) => onSelectOperation(operation.id)}
+        onSelectSavedResponse={(response) =>
+          onSelectOperation(response.operationId)
+        }
         onDeleteSavedResponse={() => {}}
         onDeleteCustomRequest={() => {}}
         onCreateCustomRequest={async () => null}
-        onSelectCustomRequest={(request) => {
-          navigate({
-            to: "/",
-            search: { operationId: `custom:${request.id}` },
-          })
-        }}
+        onSelectCustomRequest={(request) =>
+          onSelectOperation(`custom:${request.id}`)
+        }
       />
       <SidebarInset className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
         {/* Header */}

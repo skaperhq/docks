@@ -36,15 +36,6 @@ export function BodyPanel({
   )
 
   const isRaw = body.mode === "raw"
-  const bodyTypes = React.useMemo(() => {
-    const operationTypes = operation?.requestContentTypes ?? []
-    const allTypes = [
-      body.contentType,
-      ...operationTypes,
-      ...RAW_BODY_TYPES.map((item) => item.value),
-    ]
-    return [...new Set(allTypes.filter(Boolean))]
-  }, [body.contentType, operation?.requestContentTypes])
 
   return (
     <section className="flex min-h-[calc(100svh-17rem)] flex-col gap-4">
@@ -64,47 +55,52 @@ export function BodyPanel({
                       ? "application/x-www-form-urlencoded"
                       : mode === "binary"
                         ? "application/octet-stream"
-                        : body.contentType,
+                        : mode === "graphql"
+                          ? "application/json"
+                          : mode === "raw" && !isRawBodyType(body.contentType)
+                            ? "application/json"
+                            : body.contentType,
               })
             }
             className="flex flex-wrap items-center gap-5"
           >
-            {[
-              "none",
-              "form-data",
-              "x-www-form-urlencoded",
-              "raw",
-              "binary",
-            ].map((mode) => (
+            {BODY_MODES.map((mode) => (
               <label
-                key={mode}
+                key={mode.value}
                 className="inline-flex cursor-pointer items-center gap-2 text-sm"
               >
-                <RadioGroupItem value={mode} />
-                <span className={body.mode === mode ? "text-foreground" : ""}>
-                  {mode}
+                <RadioGroupItem value={mode.value} />
+                <span
+                  className={body.mode === mode.value ? "text-foreground" : ""}
+                >
+                  {mode.label}
                 </span>
               </label>
             ))}
           </RadioGroup>
-          <Select
-            value={body.contentType}
-            onValueChange={(contentType) => updateBody({ contentType })}
-          >
-            <SelectTrigger className="h-8 w-40 border-0 bg-transparent px-0 text-blue-500 shadow-none">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Body Type</SelectLabel>
-                {bodyTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {getBodyTypeLabel(type)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          {isRaw ? (
+            <Select
+              value={body.contentType}
+              onValueChange={(contentType) => updateBody({ contentType })}
+            >
+              <SelectTrigger
+                aria-label="Raw body type"
+                className="h-8 w-32 border-0 bg-transparent px-0 text-blue-500 shadow-none"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Body Type</SelectLabel>
+                  {RAW_BODY_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          ) : null}
         </div>
         {isRaw ? (
           <Button
@@ -123,21 +119,25 @@ export function BodyPanel({
   )
 }
 
-const RAW_BODY_TYPES = [
-  { value: "application/json", label: "JSON" },
-  { value: "text/plain", label: "Text" },
-  { value: "application/javascript", label: "JavaScript" },
-  { value: "text/html", label: "HTML" },
-  { value: "application/xml", label: "XML" },
-  { value: "application/graphql", label: "GraphQL" },
-  { value: "application/yaml", label: "YAML" },
-  { value: "text/css", label: "CSS" },
-  { value: "application/octet-stream", label: "Binary" },
+export const BODY_MODES = [
+  { value: "none", label: "none" },
+  { value: "form-data", label: "form-data" },
+  { value: "x-www-form-urlencoded", label: "x-www-form-urlencoded" },
+  { value: "raw", label: "raw" },
+  { value: "binary", label: "binary" },
+  { value: "graphql", label: "GraphQL" },
 ] as const
 
-function getBodyTypeLabel(contentType: string) {
-  const knownType = RAW_BODY_TYPES.find((item) => item.value === contentType)
-  return knownType?.label ?? contentType
+export const RAW_BODY_TYPES = [
+  { value: "text/plain", label: "Text" },
+  { value: "application/javascript", label: "JavaScript" },
+  { value: "application/json", label: "JSON" },
+  { value: "text/html", label: "HTML" },
+  { value: "application/xml", label: "XML" },
+] as const
+
+function isRawBodyType(contentType: string) {
+  return RAW_BODY_TYPES.some((item) => item.value === contentType)
 }
 
 function RequestBodyModeContent({
@@ -162,6 +162,7 @@ function RequestBodyModeContent({
         rows={body.formDataRows ?? []}
         onRowsChange={(formDataRows) => updateBody({ formDataRows })}
         emptyMessage="Add form-data rows for this request."
+        allowFileValues
       />
     )
   }
@@ -209,6 +210,25 @@ function RequestBodyModeContent({
     )
   }
 
+  if (body.mode === "graphql") {
+    return (
+      <div className="grid min-h-96 flex-1 gap-4 lg:grid-cols-2">
+        <GraphqlEditor
+          label="Query"
+          value={body.graphqlQuery ?? ""}
+          contentType="text/plain"
+          onChange={(graphqlQuery) => updateBody({ graphqlQuery })}
+        />
+        <GraphqlEditor
+          label="GraphQL Variables"
+          value={body.graphqlVariables ?? ""}
+          contentType="application/json"
+          onChange={(graphqlVariables) => updateBody({ graphqlVariables })}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-96 flex-1 overflow-hidden rounded-sm border border-border bg-card">
       <BodyEditor
@@ -217,6 +237,34 @@ function RequestBodyModeContent({
         contentType={body.contentType}
         className="min-h-96"
       />
+    </div>
+  )
+}
+
+function GraphqlEditor({
+  label,
+  value,
+  contentType,
+  onChange,
+}: {
+  label: string
+  value: string
+  contentType: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="flex min-h-96 min-w-0 flex-col gap-2">
+      <div className="text-xs font-medium tracking-wide text-foreground uppercase">
+        {label}
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-sm border border-border bg-card">
+        <BodyEditor
+          value={value}
+          onChange={onChange}
+          contentType={contentType}
+          className="h-full min-h-96"
+        />
+      </div>
     </div>
   )
 }

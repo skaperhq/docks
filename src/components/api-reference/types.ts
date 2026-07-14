@@ -16,6 +16,8 @@ export type KeyValueRow = {
   minLength?: number
   maxLength?: number
   example?: any
+  fileName?: string
+  file?: Blob
 }
 
 export type RequestBodyDraft = {
@@ -26,6 +28,8 @@ export type RequestBodyDraft = {
   urlEncodedRows?: KeyValueRow[]
   binaryFileName?: string
   binaryFile?: Blob
+  graphqlQuery?: string
+  graphqlVariables?: string
 }
 
 export type RequestDraft = {
