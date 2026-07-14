@@ -11,6 +11,8 @@ import {
   PlugIcon,
   PlusIcon,
   RadioTowerIcon,
+  SatelliteDish,
+  SatelliteDishIcon,
   Trash2Icon,
   WifiIcon,
 } from "lucide-react"
@@ -60,7 +62,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { apiOperations, getOperationGroups } from "@/lib/openapi"
-import { groupCustomRequestsByTransport } from "@/lib/request-model"
+
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 
@@ -121,12 +123,30 @@ export function AppSidebar({
   const [newRequestMode, setNewRequestMode] =
     React.useState<RequestMode>("standard")
   const [httpOpen, setHttpOpen] = React.useState(false)
+  const [sseOpen, setSseOpen] = React.useState(false)
   const [websocketOpen, setWebsocketOpen] = React.useState(false)
   const groups = React.useMemo(
     () => getOperationGroups({ query: searchQuery, requestOnly: false }),
     [searchQuery]
   )
-  const endpointCount = apiOperations.length
+  const httpOpenApiGroups = React.useMemo(() => {
+    return groups
+      .map((g) => ({
+        ...g,
+        operations: g.operations.filter((op) => op.requestMode !== "sse"),
+      }))
+      .filter((g) => g.operations.length > 0)
+  }, [groups])
+
+  const sseOpenApiGroups = React.useMemo(() => {
+    return groups
+      .map((g) => ({
+        ...g,
+        operations: g.operations.filter((op) => op.requestMode === "sse"),
+      }))
+      .filter((g) => g.operations.length > 0)
+  }, [groups])
+
   const savedResponsesByOperation = React.useMemo(() => {
     const map = new Map<string, SavedResponseSummary[]>()
     for (const response of savedResponses) {
@@ -137,8 +157,38 @@ export function AppSidebar({
     }
     return map
   }, [savedResponses])
-  const customRequestsByTransport = React.useMemo(() => {
-    return groupCustomRequestsByTransport(customRequests, searchQuery)
+
+  const customRequestsByGroup = React.useMemo(() => {
+    const httpCustom: PersistedCustomRequest[] = []
+    const sseCustom: PersistedCustomRequest[] = []
+    const wsCustom: PersistedCustomRequest[] = []
+
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+
+    for (const request of customRequests) {
+      if (
+        normalizedQuery &&
+        !`${request.name} ${request.url} ${request.method} ${request.transport} ${request.mode}`
+          .toLowerCase()
+          .includes(normalizedQuery)
+      ) {
+        continue
+      }
+
+      if (request.transport === "websocket") {
+        wsCustom.push(request)
+      } else if (request.mode === "sse") {
+        sseCustom.push(request)
+      } else {
+        httpCustom.push(request)
+      }
+    }
+
+    return {
+      http: httpCustom,
+      sse: sseCustom,
+      websocket: wsCustom,
+    }
   }, [customRequests, searchQuery])
 
   React.useEffect(() => {
@@ -147,6 +197,18 @@ export function AppSidebar({
       (!selectedOperationId && !selectedRequestId)
     ) {
       setHttpOpen(false)
+      setSseOpen(false)
+      setWebsocketOpen(false)
+      return
+    }
+
+    if (selectedOperationId) {
+      const selectedOp = apiOperations.find(
+        (op) => op.id === selectedOperationId
+      )
+      const isSse = selectedOp?.requestMode === "sse"
+      setHttpOpen(!isSse)
+      setSseOpen(isSse)
       setWebsocketOpen(false)
       return
     }
@@ -154,9 +216,11 @@ export function AppSidebar({
     const selectedCustomRequest = customRequests.find(
       (request) => getCustomRequestKey(request.id) === selectedRequestId
     )
-    const transport = selectedCustomRequest?.transport ?? "http"
-    setHttpOpen(transport === "http")
-    setWebsocketOpen(transport === "websocket")
+    const isWs = selectedCustomRequest?.transport === "websocket"
+    const isSse = selectedCustomRequest?.mode === "sse"
+    setHttpOpen(!isWs && !isSse)
+    setSseOpen(isSse)
+    setWebsocketOpen(isWs)
   }, [activePage, customRequests, selectedOperationId, selectedRequestId])
 
   return (
@@ -279,14 +343,16 @@ export function AppSidebar({
               <ArrowLeftRightIcon className="w-4 text-sidebar-foreground/60" />
             }
             count={
-              endpointCount +
-              (customRequestsByTransport.get("http")?.length ?? 0)
+              httpOpenApiGroups.reduce(
+                (acc, g) => acc + g.operations.length,
+                0
+              ) + customRequestsByGroup.http.length
             }
             open={httpOpen}
             onOpenChange={setHttpOpen}
             openApiContent={
               <OpenApiRequestTree
-                groups={groups}
+                groups={httpOpenApiGroups}
                 selectedOperationId={selectedOperationId}
                 savedResponsesByOperation={savedResponsesByOperation}
                 selectedSavedResponseId={selectedSavedResponseId}
@@ -295,7 +361,34 @@ export function AppSidebar({
                 onDeleteSavedResponse={onDeleteSavedResponse}
               />
             }
-            customRequests={customRequestsByTransport.get("http") ?? []}
+            customRequests={customRequestsByGroup.http}
+            selectedRequestId={selectedRequestId}
+            onSelectCustomRequest={onSelectCustomRequest}
+            onDeleteCustomRequest={onDeleteCustomRequest}
+          />
+          <TransportSection
+            label="SSE"
+            icon={<SatelliteDish className="w-4 text-sidebar-foreground/60" />}
+            count={
+              sseOpenApiGroups.reduce(
+                (acc, g) => acc + g.operations.length,
+                0
+              ) + customRequestsByGroup.sse.length
+            }
+            open={sseOpen}
+            onOpenChange={setSseOpen}
+            openApiContent={
+              <OpenApiRequestTree
+                groups={sseOpenApiGroups}
+                selectedOperationId={selectedOperationId}
+                savedResponsesByOperation={savedResponsesByOperation}
+                selectedSavedResponseId={selectedSavedResponseId}
+                onSelectOperation={onSelectOperation}
+                onSelectSavedResponse={onSelectSavedResponse}
+                onDeleteSavedResponse={onDeleteSavedResponse}
+              />
+            }
+            customRequests={customRequestsByGroup.sse}
             selectedRequestId={selectedRequestId}
             onSelectCustomRequest={onSelectCustomRequest}
             onDeleteCustomRequest={onDeleteCustomRequest}
@@ -303,11 +396,11 @@ export function AppSidebar({
           <TransportSection
             label="WebSocket"
             icon={<PlugIcon className="w-4 text-sidebar-foreground/60" />}
-            count={customRequestsByTransport.get("websocket")?.length ?? 0}
+            count={customRequestsByGroup.websocket.length}
             open={websocketOpen}
             onOpenChange={setWebsocketOpen}
             openApiContent={<EmptyProtocolFolder label="WebSocket" />}
-            customRequests={customRequestsByTransport.get("websocket") ?? []}
+            customRequests={customRequestsByGroup.websocket}
             selectedRequestId={selectedRequestId}
             onSelectCustomRequest={onSelectCustomRequest}
             onDeleteCustomRequest={onDeleteCustomRequest}
@@ -357,68 +450,65 @@ export function AppSidebar({
             />
             <div className="grid grid-cols-2 gap-2">
               <Select
-                value={newRequestTransport}
+                value={
+                  newRequestTransport === "websocket"
+                    ? "websocket"
+                    : newRequestMode === "sse"
+                      ? "sse"
+                      : "http"
+                }
                 onValueChange={(value) => {
-                  const transport = value as RequestTransport
-                  setNewRequestTransport(transport)
-                  setNewRequestMode("standard")
-                  setNewRequestMethod("GET")
+                  if (value === "websocket") {
+                    setNewRequestTransport("websocket")
+                    setNewRequestMode("standard")
+                    setNewRequestMethod("GET")
+                  } else if (value === "sse") {
+                    setNewRequestTransport("http")
+                    setNewRequestMode("sse")
+                    setNewRequestMethod("GET")
+                  } else {
+                    setNewRequestTransport("http")
+                    setNewRequestMode("standard")
+                    setNewRequestMethod("GET")
+                  }
                 }}
               >
-                <SelectTrigger className="h-9 w-full">
-                  <SelectValue aria-label="Request transport" />
+                <SelectTrigger className="h-9 w-full" aria-label="Request type">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="http">HTTP</SelectItem>
+                  <SelectItem value="sse">Server-Sent Events</SelectItem>
                   <SelectItem value="websocket">WebSocket</SelectItem>
                 </SelectContent>
               </Select>
               <Select
-                value={newRequestMode}
-                onValueChange={(value) => {
-                  const mode = value as RequestMode
-                  setNewRequestMode(mode)
-                  if (mode === "sse") setNewRequestMethod("GET")
-                }}
-                disabled={newRequestTransport !== "http"}
+                value={newRequestMethod}
+                onValueChange={(value) =>
+                  setNewRequestMethod(value as RequestMethod)
+                }
+                disabled={newRequestTransport === "websocket"}
               >
-                <SelectTrigger className="h-9 w-full" aria-label="HTTP mode">
+                <SelectTrigger className="h-9 w-full" aria-label="HTTP method">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="standard">Standard</SelectItem>
-                  <SelectItem value="sse">Server-sent events</SelectItem>
+                  {[
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE",
+                    "HEAD",
+                    "OPTIONS",
+                  ].map((method) => (
+                    <SelectItem key={method} value={method}>
+                      {method}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <Select
-              value={newRequestMethod}
-              onValueChange={(value) =>
-                setNewRequestMethod(value as RequestMethod)
-              }
-              disabled={
-                newRequestTransport !== "http" || newRequestMode === "sse"
-              }
-            >
-              <SelectTrigger className="h-9 w-full" aria-label="HTTP method">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[
-                  "GET",
-                  "POST",
-                  "PUT",
-                  "PATCH",
-                  "DELETE",
-                  "HEAD",
-                  "OPTIONS",
-                ].map((method) => (
-                  <SelectItem key={method} value={method}>
-                    {method}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Input
               value={newRequestUrl}
               onChange={(event) => setNewRequestUrl(event.target.value)}
@@ -838,7 +928,7 @@ function OperationItem({
                   className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-0 py-0 font-normal hover:bg-transparent"
                 >
                   <span className="inline-flex h-4 shrink-0 items-center rounded-xs border border-sidebar-foreground/50 px-0.5 text-[10px] leading-none font-semibold text-sidebar-foreground/70">
-                    e.g.
+                    {savedResponse.status}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[12px]">
                     {savedResponse.name}

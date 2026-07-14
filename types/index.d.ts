@@ -5,6 +5,8 @@ export type SkaperUIOptions = {
   title?: string
   /** Optional CSP nonce applied to the embedded style and module script. */
   nonce?: string
+  /** Optional password protecting the UI. */
+  password?: string
 }
 
 export type HonoContextLike = {

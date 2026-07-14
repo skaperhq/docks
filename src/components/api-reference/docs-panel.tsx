@@ -90,7 +90,7 @@ export function DocsPanel({
 
 export function CurlExample({ command }: { command: string }) {
   return (
-    <div className="mt-4 flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <h6 className="text-[13px] font-normal text-foreground/70">cURL</h6>
       <ReadOnlyCodeBlock
         value={command}

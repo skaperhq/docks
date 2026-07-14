@@ -87,21 +87,11 @@ export function setDocksStorageAdapter(adapter: StorageAdapter) {
 export function getDocksStorageAdapter() {
   if (!storageAdapter) {
     throw new Error(
-      "Docks storage adapter has not been initialized. The browser entry initializes IndexedDB by default; package consumers can call setDocksStorageAdapter with a Postgres-backed adapter."
+      "Docks storage adapter has not been initialized. The browser entry initializes IndexedDB by default; package consumers can call setDocksStorageAdapter."
     )
   }
 
   return storageAdapter
-}
-
-/**
- * Provides a typed identity helper for adapters implemented by an application.
- * Despite the name, no Postgres dependency is bundled or initialized here.
- */
-export function createPostgresStorageAdapter(
-  adapter: StorageAdapter
-): StorageAdapter {
-  return adapter
 }
 
 /** Returns whether an adapter has already been installed. */

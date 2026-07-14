@@ -10,14 +10,8 @@ import { serializeGraphqlBody } from "./api-request"
  * cannot change the command's meaning when it is pasted into a terminal.
  */
 export function buildCurlCommand(snapshot: SavedRequestSnapshot) {
-  const method = snapshot.mode === "sse" ? "GET" : snapshot.method
+  const method = snapshot.method
   const parts = [`curl --request ${method}`, shellQuote(snapshot.url)]
-
-  // Native EventSource only sends the resolved URL and browser cookies. The
-  // preserved header/body drafts are deliberately excluded from its cURL view.
-  if (snapshot.mode === "sse") {
-    return parts.join(" \\\n  ")
-  }
 
   for (const header of enabledRows(snapshot.headers)) {
     parts.push(

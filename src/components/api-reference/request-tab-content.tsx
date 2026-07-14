@@ -100,10 +100,10 @@ export function RequestTabLabel({
 
 function CustomDocsPanel({ curlCommand }: { curlCommand?: string }) {
   return (
-    <section className="flex min-h-64 flex-col gap-5 rounded-sm border border-dashed border-border bg-muted/20 p-8 text-sm text-muted-foreground">
+    <section className="flex min-h-52 flex-col gap-5 rounded-sm border border-border bg-background p-4 text-sm text-muted-foreground">
       <div>
         <h2 className="mb-2 text-base font-medium text-foreground">
-          Custom request
+          Custom Request
         </h2>
         <p>
           This request was created in the workspace and is not generated from

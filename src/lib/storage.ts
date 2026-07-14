@@ -1,5 +1,4 @@
 export {
-  createPostgresStorageAdapter,
   getDocksStorageAdapter,
   isDocksStorageAdapterConfigured,
   setDocksStorageAdapter,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import crypto from "node:crypto"
 import { createRequire } from "node:module"
 import skaperUI, { skaperUI as namedSkaperUI } from "../dist/package/index.js"
 
@@ -21,6 +22,26 @@ assert.match(html, /const openApiUrl = "\/docs\/openapi.json"/)
 assert.match(html, /<style nonce="test-nonce">/)
 assert.match(html, /<script type="module" nonce="test-nonce">/)
 assert.doesNotMatch(html, /process\.env/)
+
+// Test password option validation
+assert.throws(() => {
+  skaperUI({
+    url: "/docs/openapi.json",
+    password: 123,
+  })
+}, TypeError)
+
+// Test password hashing and HTML injection
+const expectedHash = crypto.createHash("sha256").update("supersecretpassword").digest("hex")
+const passwordHandler = skaperUI({
+  url: "/docs/openapi.json",
+  password: "supersecretpassword",
+})
+const passwordHtml = passwordHandler({ html: (content) => content })
+assert.match(passwordHtml, new RegExp(`const passwordHash = "${expectedHash}"`))
+assert.match(passwordHtml, /class="skaper-login-container"/)
+assert.match(passwordHtml, /id="skaper-password-input"/)
+
 
 let expressType
 let expressHtml

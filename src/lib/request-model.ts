@@ -21,7 +21,7 @@ export function normalizeRequestConfiguration({
     transport,
     mode: normalizedMode,
     method:
-      transport === "websocket" || normalizedMode === "sse" ? "GET" : method,
+      transport === "websocket" ? "GET" : method,
   }
 }
 

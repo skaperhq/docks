@@ -49,10 +49,9 @@ import { buildFetchRequest } from "@/lib/api-request"
 import { buildCurlCommand } from "@/lib/request-curl"
 import { requestDraftFromSnapshot } from "@/lib/request-snapshot"
 import {
-  buildSseUrl,
   closeActiveStream,
   openSseConnection,
-} from "@/lib/sse-request"
+} from "@/lib/sse/sse-request"
 import { getRequestTabCloseResult } from "@/lib/request-tabs"
 import { normalizeRequestConfiguration } from "@/lib/request-model"
 import {
@@ -286,16 +285,15 @@ export function WorkspacePage({
       : null
 
     if (selectedRequest.mode === "sse") {
-      return createStreamSnapshot({
-        request: selectedRequest,
-        url: buildSseUrl({
-          baseUrl: fullRequestUrl,
-          params: requestDraft.params,
-          resolveVariables,
-        }),
+      const sseRequest = buildFetchRequest({
+        baseUrl: fullRequestUrl,
+        method: selectedRequest.method,
         draft: requestDraft,
+        resolveVariables,
         environment,
       })
+      sseRequest.requestSnapshot.mode = "sse"
+      return sseRequest.requestSnapshot
     }
 
     return buildFetchRequest({
@@ -754,21 +752,6 @@ export function WorkspacePage({
 
     const startedAt = performance.now()
     if (
-      selectedRequest.hasEventStreamResponse &&
-      selectedRequest.method !== "GET"
-    ) {
-      setResponseStateByOperationId((states) => ({
-        ...states,
-        [selectedRequest.id]: {
-          status: "error",
-          error:
-            "Native EventSource supports GET streams only. This OpenAPI operation advertises text/event-stream for a non-GET method.",
-          durationMs: 0,
-        },
-      }))
-      return
-    }
-    if (
       selectedRequest.transport === "http" &&
       selectedRequest.mode === "standard" &&
       requestDraft.body.mode === "binary" &&
@@ -815,18 +798,11 @@ export function WorkspacePage({
       }
 
       if (selectedRequest.mode === "sse") {
-        connectSseRequest({
-          request: selectedRequest,
-          url: buildSseUrl({
-            baseUrl: fullRequestUrl,
-            params: requestDraft.params,
-            resolveVariables,
-          }),
+        const sseRequest = buildFetchRequest({
+          baseUrl: fullRequestUrl,
+          method: selectedRequest.method,
           draft: requestDraft,
-          startedAt,
-          setRequestSnapshotByOperationId,
-          setResponseStateByOperationId,
-          activeStreamRef,
+          resolveVariables,
           environment: activeEnvironment
             ? {
                 id: activeEnvironment.id,
@@ -834,6 +810,19 @@ export function WorkspacePage({
                 baseUrl: activeEnvironment.baseUrl,
               }
             : null,
+        })
+        sseRequest.requestSnapshot.mode = "sse"
+
+        connectSseRequest({
+          request: selectedRequest,
+          url: sseRequest.url,
+          headers: sseRequest.headers,
+          body: sseRequest.body,
+          requestSnapshot: sseRequest.requestSnapshot,
+          startedAt,
+          setRequestSnapshotByOperationId,
+          setResponseStateByOperationId,
+          activeStreamRef,
         })
         return
       }
@@ -1017,11 +1006,7 @@ function RequestWorkspace({
   ) => void
   curlCommand?: string
 }) {
-  const unavailableInSse = new Set<RequestTab>(["Headers", "Body"])
-  const visibleRequestTab =
-    request.mode === "sse" && unavailableInSse.has(activeRequestTab)
-      ? "Docs"
-      : activeRequestTab
+  const visibleRequestTab = activeRequestTab
 
   return (
     <>
@@ -1089,9 +1074,7 @@ function RequestWorkspace({
 
       {request.mode === "sse" ? (
         <div className="mt-3 rounded-md border border-border bg-muted/35 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          Native EventSource uses GET with URL/query parameters and
-          browser-managed cookies. Authorization headers, custom headers, and
-          request bodies are preserved but are not sent.
+          Fetch-based Server-Sent Events (SSE) support custom methods, headers, and request bodies.
         </div>
       ) : null}
 
@@ -1105,7 +1088,6 @@ function RequestWorkspace({
             <TabsTrigger
               key={tab}
               value={tab}
-              disabled={request.mode === "sse" && unavailableInSse.has(tab)}
               className="shrink-0 rounded-sm"
             >
               <RequestTabLabel
@@ -1170,7 +1152,7 @@ function CustomRequestAddressBar({
       >
         <SelectTrigger
           aria-label="Request transport"
-          className="h-full w-32 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-semibold text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="h-full w-32 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
         >
           <SelectValue />
         </SelectTrigger>
@@ -1190,7 +1172,7 @@ function CustomRequestAddressBar({
       >
         <SelectTrigger
           aria-label="HTTP mode"
-          className="h-full w-32 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-semibold text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="h-full w-32 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
         >
           <SelectValue />
         </SelectTrigger>
@@ -1211,7 +1193,7 @@ function CustomRequestAddressBar({
         <SelectTrigger
           aria-label="HTTP method"
           className={cn(
-            "h-full w-28 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-semibold shadow-none focus-visible:ring-0 dark:bg-transparent",
+            "h-full w-28 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal shadow-none focus-visible:ring-0 dark:bg-transparent",
             getMethodClassName(request.method)
           )}
         >
@@ -1554,16 +1536,19 @@ function connectWebSocketRequest({
 function connectSseRequest({
   request,
   url,
-  draft,
+  headers,
+  body,
+  requestSnapshot,
   startedAt,
   setRequestSnapshotByOperationId,
   setResponseStateByOperationId,
   activeStreamRef,
-  environment,
 }: {
   request: WorkspaceRequest
   url: string
-  draft: RequestDraft
+  headers: Headers
+  body: BodyInit | undefined
+  requestSnapshot: SavedRequestSnapshot
   startedAt: number
   setRequestSnapshotByOperationId: React.Dispatch<
     React.SetStateAction<Partial<Record<string, SavedRequestSnapshot>>>
@@ -1572,14 +1557,12 @@ function connectSseRequest({
     React.SetStateAction<ResponseStateMap>
   >
   activeStreamRef: { current: { id: string; close: () => void } | null }
-  environment: SavedRequestSnapshot["environment"]
 }) {
-  let bodyText =
-    "[connecting] SSE connection started. EventSource uses GET and browser-managed headers.\n"
+  let bodyText = `[connecting] SSE connection started. Method: ${requestSnapshot.method}\n`
 
   setRequestSnapshotByOperationId((snapshots) => ({
     ...snapshots,
-    [request.id]: createStreamSnapshot({ request, url, draft, environment }),
+    [request.id]: requestSnapshot,
   }))
 
   const updateStream = (status = 200, statusText = "Streaming") => {
@@ -1598,8 +1581,16 @@ function connectSseRequest({
     }))
   }
 
+  const headersRecord: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    headersRecord[key] = value
+  })
+
   const connection = openSseConnection({
     url,
+    method: requestSnapshot.method,
+    headers: headersRecord,
+    body,
     onOpen: () => {
       bodyText += "[open] Connected\n"
       updateStream()
@@ -1608,10 +1599,17 @@ function connectSseRequest({
       bodyText += `[event] ${data}\n`
       updateStream()
     },
-    onError: () => {
-      bodyText +=
-        "[error] SSE connection interrupted; EventSource may reconnect.\n"
-      updateStream(200, "Reconnecting")
+    onError: (err) => {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      bodyText += `[error] SSE connection failed: ${errMsg}\n`
+      setResponseStateByOperationId((states) => ({
+        ...states,
+        [request.id]: {
+          status: "error",
+          error: errMsg,
+          durationMs: Math.round(performance.now() - startedAt),
+        },
+      }))
     },
   })
   activeStreamRef.current = { id: request.id, close: connection.close }

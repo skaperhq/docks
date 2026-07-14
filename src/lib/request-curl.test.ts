@@ -73,25 +73,23 @@ describe("buildCurlCommand", () => {
     expect(encoded).toContain("--data-urlencode 'q=api docs'")
   })
 
-  test("shows the actual URL-only native EventSource request", () => {
+  test("shows full headers and body for fetch-based SSE requests", () => {
     const command = buildCurlCommand(
       createSnapshot({
         mode: "sse",
-        method: "GET",
+        method: "POST",
         headers: [{ key: "Authorization", value: "Bearer x", description: "" }],
         body: {
           mode: "raw",
           contentType: "application/json",
-          value: "ignored",
+          value: '{"foo":"bar"}',
         },
       })
     )
 
-    expect(command).toBe(
-      "curl --request GET \\\n  'https://api.example.com/items'"
-    )
-    expect(command).not.toContain("Authorization")
-    expect(command).not.toContain("ignored")
+    expect(command).toContain("curl --request POST")
+    expect(command).toContain("'Authorization: Bearer x'")
+    expect(command).toContain("'{\"foo\":\"bar\"}'")
   })
 })
 

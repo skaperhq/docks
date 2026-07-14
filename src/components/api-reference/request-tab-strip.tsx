@@ -50,7 +50,7 @@ export function RequestTabStrip({
             >
               <span
                 className={cn(
-                  "text-[11px] font-semibold",
+                  "text-[11px] font-normal",
                   apiOperation.mode === "sse"
                     ? "text-violet-600 dark:text-violet-400"
                     : getMethodClassName(apiOperation.method)

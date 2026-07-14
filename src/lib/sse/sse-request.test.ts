@@ -42,27 +42,65 @@ describe("SSE requests", () => {
     expect(url).toBe("https://api.example.com/events/updates%2Fall?token=abc")
   })
 
-  test("forwards EventSource lifecycle events and closes the connection", () => {
-    const instance = installFakeEventSource()
+  test("forwards fetch lifecycle events and closes the connection", async () => {
+    let resolveResponse: any
+    const responsePromise = new Promise((resolve) => {
+      resolveResponse = resolve
+    })
+
+    const fetchMock = vi.fn().mockImplementation(() => responsePromise)
+    vi.stubGlobal("fetch", fetchMock)
+
     const onOpen = vi.fn()
     const onMessage = vi.fn()
     const onError = vi.fn()
+
     const connection = openSseConnection({
       url: "https://api.example.com/events",
+      method: "POST",
+      headers: { Authorization: "Bearer x" },
+      body: '{"foo":"bar"}',
       onOpen,
       onMessage,
       onError,
     })
 
-    instance.onopen?.(new Event("open"))
-    instance.onmessage?.(new MessageEvent("message", { data: "hello" }))
-    instance.onerror?.(new Event("error"))
-    connection.close()
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.com/events", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer x",
+        Accept: "text/event-stream",
+      },
+      body: '{"foo":"bar"}',
+      signal: expect.any(AbortSignal),
+    })
+
+    let controller: ReadableStreamDefaultController | undefined
+    const stream = new ReadableStream({
+      start(c) {
+        controller = c
+      },
+    })
+
+    resolveResponse({
+      ok: true,
+      body: stream,
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 5))
 
     expect(onOpen).toHaveBeenCalledOnce()
-    expect(onMessage).toHaveBeenCalledWith("hello")
-    expect(onError).toHaveBeenCalledOnce()
-    expect(instance.close).toHaveBeenCalledOnce()
+
+    const encoder = new TextEncoder()
+    controller!.enqueue(encoder.encode("data: message 1\n\ndata: message 2\n\n"))
+
+    await new Promise((resolve) => setTimeout(resolve, 5))
+
+    expect(onMessage).toHaveBeenCalledWith("message 1")
+    expect(onMessage).toHaveBeenCalledWith("message 2")
+
+    connection.close()
+    controller!.close()
   })
 
   test("closes only the stream owned by the closing tab", () => {
@@ -76,45 +114,3 @@ describe("SSE requests", () => {
     expect(activeStreamRef.current).toBeNull()
   })
 })
-
-function installFakeEventSource() {
-  const instance = {
-    onopen: null as ((event: Event) => void) | null,
-    onmessage: null as ((event: MessageEvent) => void) | null,
-    onerror: null as ((event: Event) => void) | null,
-    close: vi.fn(),
-  }
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      onopen = instance.onopen
-      onmessage = instance.onmessage
-      onerror = instance.onerror
-      close = instance.close
-
-      constructor(_url: string) {
-        Object.defineProperties(instance, {
-          onopen: {
-            get: () => this.onopen,
-            set: (value) => {
-              this.onopen = value
-            },
-          },
-          onmessage: {
-            get: () => this.onmessage,
-            set: (value) => {
-              this.onmessage = value
-            },
-          },
-          onerror: {
-            get: () => this.onerror,
-            set: (value) => {
-              this.onerror = value
-            },
-          },
-        })
-      }
-    }
-  )
-  return instance
-}

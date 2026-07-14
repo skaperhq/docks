@@ -6,14 +6,14 @@ import {
 } from "./request-model"
 
 describe("request model", () => {
-  test("forces native SSE requests to HTTP GET", () => {
+  test("preserves custom method for SSE requests", () => {
     expect(
       normalizeRequestConfiguration({
         transport: "http",
         mode: "sse",
         method: "POST",
       })
-    ).toEqual({ transport: "http", mode: "sse", method: "GET" })
+    ).toEqual({ transport: "http", mode: "sse", method: "POST" })
   })
 
   test("clears SSE mode when switching to WebSocket", () => {

@@ -25,11 +25,4 @@ describe("storage adapter configuration", () => {
     expect(storage.isDocksStorageAdapterConfigured()).toBe(true)
     expect(storage.getDocksStorageAdapter()).toBe(adapter)
   })
-
-  test("keeps application-provided Postgres adapters dependency-free", async () => {
-    const { createPostgresStorageAdapter } = await import("./storage-adapter")
-    const adapter = { kind: "postgres" } as unknown as StorageAdapter
-
-    expect(createPostgresStorageAdapter(adapter)).toBe(adapter)
-  })
 })
