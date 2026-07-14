@@ -12,7 +12,6 @@ import {
   PlusIcon,
   RadioTowerIcon,
   SatelliteDish,
-  SatelliteDishIcon,
   Trash2Icon,
   WifiIcon,
 } from "lucide-react"
