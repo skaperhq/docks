@@ -10,9 +10,11 @@ import {
   isDocksStorageAdapterConfigured,
   setDocksStorageAdapter,
 } from "../lib/storage-adapter"
+import { getRuntimeWorkspaceId, getWorkspaceStorageKey } from "../lib/workspace"
 
+const workspaceId = getRuntimeWorkspaceId()
 if (!isDocksStorageAdapterConfigured()) {
-  setDocksStorageAdapter(createIndexedDbStorageAdapter())
+  setDocksStorageAdapter(createIndexedDbStorageAdapter(workspaceId))
 }
 
 export const Route = createRootRoute({
@@ -68,7 +70,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                const theme = localStorage.getItem('docks-ui-theme') || localStorage.getItem('vite-ui-theme') || 'system';
+                const theme = localStorage.getItem('skaper:development:ui-theme') || 'system';
                 const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 document.documentElement.classList.toggle('dark', isDark);
               } catch (e) {}
@@ -77,8 +79,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         />
       </head>
       <body>
-        <ThemeProvider>
-          <EnvironmentProvider>{children}</EnvironmentProvider>
+        <ThemeProvider
+          storageKey={getWorkspaceStorageKey(workspaceId, "ui-theme")}
+        >
+          <EnvironmentProvider workspaceId={workspaceId}>
+            {children}
+          </EnvironmentProvider>
         </ThemeProvider>
         <TanStackDevtools
           config={{

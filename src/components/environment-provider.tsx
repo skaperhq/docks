@@ -7,6 +7,8 @@ import {
   deleteVariable as deleteVariableServer,
   bulkSyncEnvironments,
 } from "../lib/environment-actions"
+import { apiServers } from "../lib/openapi"
+import { getWorkspaceStorageKey } from "../lib/workspace"
 
 export interface EnvironmentVariable {
   id: string
@@ -51,44 +53,45 @@ const EnvironmentContext = React.createContext<
   EnvironmentContextType | undefined
 >(undefined)
 
-const DEFAULT_ENVIRONMENTS: Environment[] = [
-  {
-    id: "dev",
-    name: "Development",
-    baseUrl: "https://dev-api.claritalk.ai",
-    variables: [
-      {
-        id: "dev-token",
-        key: "access_token",
-        value: "",
-        enabled: true,
-        isSecret: true,
-        description: "Bearer authentication token for Dev environment",
-      },
-    ],
-  },
-  {
-    id: "local",
-    name: "Local",
-    baseUrl: "http://localhost:3001",
-    variables: [
-      {
-        id: "local-token",
-        key: "access_token",
-        value: "",
-        enabled: true,
-        isSecret: true,
-        description: "Bearer authentication token for Local environment",
-      },
-    ],
-  },
-]
+function createDefaultVariable(environmentId: string): EnvironmentVariable {
+  return {
+    id: `${environmentId}-token`,
+    key: "access_token",
+    value: "",
+    enabled: true,
+    isSecret: true,
+    description: "Bearer authentication token",
+  }
+}
+
+const DEFAULT_ENVIRONMENTS: Environment[] =
+  apiServers.length > 0
+    ? apiServers.map((server, index) => ({
+        id: `server-${index + 1}`,
+        name: apiServers.length === 1 ? "Default" : `Server ${index + 1}`,
+        baseUrl: server.url,
+        variables: [createDefaultVariable(`server-${index + 1}`)],
+      }))
+    : [
+        {
+          id: "default",
+          name: "Default",
+          baseUrl: "",
+          variables: [createDefaultVariable("default")],
+        },
+      ]
 
 export function EnvironmentProvider({
   children,
+  workspaceId,
 }: {
   children: React.ReactNode
+  workspaceId: string
 }) {
+  const activeEnvironmentStorageKey = getWorkspaceStorageKey(
+    workspaceId,
+    "active-environment-id"
+  )
   const [environments, setEnvironments] =
     React.useState<Environment[]>(DEFAULT_ENVIRONMENTS)
   const [activeEnvironmentId, setActiveEnvironmentIdState] = React.useState<
@@ -96,45 +99,17 @@ export function EnvironmentProvider({
   >(null)
   const [loading, setLoading] = React.useState(true)
 
-  // Load initial data and migrate any legacy localStorage environments.
+  // Load data only from this workspace's database and scoped preferences.
   React.useEffect(() => {
     async function loadData() {
       try {
-        let envs = await getEnvironments()
-
-        if (typeof window !== "undefined") {
-          const storedEnvs = localStorage.getItem("skaper-environments")
-          const storedActiveId = localStorage.getItem(
-            "skaper-active-environment-id"
-          )
-
-          if (storedEnvs) {
-            try {
-              const parsedEnvs = JSON.parse(storedEnvs) as Environment[]
-              if (parsedEnvs.length > 0) {
-                await bulkSyncEnvironments({ data: parsedEnvs })
-                // Refetch to get fresh IndexedDB data.
-                envs = await getEnvironments()
-                localStorage.removeItem("skaper-environments")
-              }
-            } catch (err) {
-              console.error(
-                "Failed to migrate localStorage environments to IndexedDB:",
-                err
-              )
-            }
-          }
-
-          if (storedActiveId) {
-            setActiveEnvironmentIdState(storedActiveId)
-          }
-        }
+        const envs = await getEnvironments()
 
         if (envs.length > 0) {
           setEnvironments(envs)
           const currentActiveId =
             typeof window !== "undefined"
-              ? localStorage.getItem("skaper-active-environment-id")
+              ? localStorage.getItem(activeEnvironmentStorageKey)
               : null
           const activeId = currentActiveId || envs[0].id
           const hasActive = envs.some((env) => env.id === activeId)
@@ -144,7 +119,7 @@ export function EnvironmentProvider({
           await bulkSyncEnvironments({ data: DEFAULT_ENVIRONMENTS })
           const seeded = await getEnvironments()
           setEnvironments(seeded)
-          setActiveEnvironmentIdState(seeded[0]?.id || "dev")
+          setActiveEnvironmentIdState(seeded[0]?.id ?? null)
         }
       } catch (err) {
         console.error("Failed to load environments from IndexedDB:", err)
@@ -153,14 +128,17 @@ export function EnvironmentProvider({
       }
     }
     loadData()
-  }, [])
+  }, [activeEnvironmentStorageKey])
 
-  const setActiveEnvironmentId = React.useCallback((id: string) => {
-    setActiveEnvironmentIdState(id)
-    if (typeof window !== "undefined") {
-      localStorage.setItem("skaper-active-environment-id", id)
-    }
-  }, [])
+  const setActiveEnvironmentId = React.useCallback(
+    (id: string) => {
+      setActiveEnvironmentIdState(id)
+      if (typeof window !== "undefined") {
+        localStorage.setItem(activeEnvironmentStorageKey, id)
+      }
+    },
+    [activeEnvironmentStorageKey]
+  )
 
   const activeEnvironment = React.useMemo(() => {
     return (
@@ -190,7 +168,7 @@ export function EnvironmentProvider({
       setEnvironments((prev) => [...prev, newEnv])
       setActiveEnvironmentIdState(newEnv.id)
       if (typeof window !== "undefined") {
-        localStorage.setItem("skaper-active-environment-id", newEnv.id)
+        localStorage.setItem(activeEnvironmentStorageKey, newEnv.id)
       }
 
       saveEnvironmentServer({
@@ -212,7 +190,7 @@ export function EnvironmentProvider({
           console.error("Failed to save new environment to IndexedDB:", err)
         )
     },
-    []
+    [activeEnvironmentStorageKey]
   )
 
   const deleteEnvironment = React.useCallback(
@@ -223,7 +201,7 @@ export function EnvironmentProvider({
           const nextActive = filtered[0]?.id || null
           setActiveEnvironmentIdState(nextActive)
           if (typeof window !== "undefined" && nextActive) {
-            localStorage.setItem("skaper-active-environment-id", nextActive)
+            localStorage.setItem(activeEnvironmentStorageKey, nextActive)
           }
         }
         return filtered
@@ -233,7 +211,7 @@ export function EnvironmentProvider({
         console.error("Failed to delete environment from IndexedDB:", err)
       )
     },
-    [activeEnvironmentId]
+    [activeEnvironmentId, activeEnvironmentStorageKey]
   )
 
   const updateEnvironment = React.useCallback(

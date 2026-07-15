@@ -21,7 +21,7 @@ const STORE_NAMES = {
 
 type StoreName = (typeof STORE_NAMES)[keyof typeof STORE_NAMES]
 
-let dbPromise: Promise<IDBDatabase> | null = null
+const dbPromises = new Map<string, Promise<IDBDatabase>>()
 
 function assertBrowserStorage() {
   if (typeof indexedDB === "undefined") {
@@ -29,13 +29,15 @@ function assertBrowserStorage() {
   }
 }
 
-/** Opens (and, when necessary, upgrades) the shared Skaper database. */
-export function openSkaperDb() {
+/** Opens (and, when necessary, upgrades) a Skaper workspace database. */
+export function openSkaperDb(databaseName = DB_NAME) {
   assertBrowserStorage()
+
+  let dbPromise = dbPromises.get(databaseName)
 
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      const request = indexedDB.open(databaseName, DB_VERSION)
 
       request.onupgradeneeded = (event) => {
         // Object-store creation is additive so existing browser workspaces are
@@ -86,9 +88,11 @@ export function openSkaperDb() {
       }
 
       request.onerror = () => {
+        dbPromises.delete(databaseName)
         reject(request.error)
       }
     })
+    dbPromises.set(databaseName, dbPromise)
   }
 
   return dbPromise
@@ -114,8 +118,11 @@ function migrateWorkspaceToV3(transaction: IDBTransaction) {
   }
 }
 
-export async function getAllFromStore<T>(storeName: StoreName): Promise<T[]> {
-  const store = await getStore(storeName, "readonly")
+export async function getAllFromStore<T>(
+  storeName: StoreName,
+  databaseName = DB_NAME
+): Promise<T[]> {
+  const store = await getStore(storeName, "readonly", databaseName)
 
   return new Promise((resolve, reject) => {
     const request = store.getAll()
@@ -132,9 +139,10 @@ export async function getAllFromStore<T>(storeName: StoreName): Promise<T[]> {
 
 export async function getFromStore<T>(
   storeName: StoreName,
-  key: IDBValidKey
+  key: IDBValidKey,
+  databaseName = DB_NAME
 ): Promise<T | undefined> {
-  const store = await getStore(storeName, "readonly")
+  const store = await getStore(storeName, "readonly", databaseName)
 
   return new Promise((resolve, reject) => {
     const request = store.get(key)
@@ -151,9 +159,10 @@ export async function getFromStore<T>(
 
 export async function putInStore<T>(
   storeName: StoreName,
-  value: T
+  value: T,
+  databaseName = DB_NAME
 ): Promise<void> {
-  const store = await getStore(storeName, "readwrite")
+  const store = await getStore(storeName, "readwrite", databaseName)
 
   return new Promise((resolve, reject) => {
     const request = store.put(value)
@@ -170,9 +179,10 @@ export async function putInStore<T>(
 
 export async function deleteFromStore(
   storeName: StoreName,
-  key: IDBValidKey
+  key: IDBValidKey,
+  databaseName = DB_NAME
 ): Promise<void> {
-  const store = await getStore(storeName, "readwrite")
+  const store = await getStore(storeName, "readwrite", databaseName)
 
   return new Promise((resolve, reject) => {
     const request = store.delete(key)
@@ -187,8 +197,11 @@ export async function deleteFromStore(
   })
 }
 
-export async function clearStore(storeName: StoreName): Promise<void> {
-  const store = await getStore(storeName, "readwrite")
+export async function clearStore(
+  storeName: StoreName,
+  databaseName = DB_NAME
+): Promise<void> {
+  const store = await getStore(storeName, "readwrite", databaseName)
 
   return new Promise((resolve, reject) => {
     const request = store.clear()
@@ -203,9 +216,13 @@ export async function clearStore(storeName: StoreName): Promise<void> {
   })
 }
 
-async function getStore(storeName: StoreName, mode: IDBTransactionMode) {
-  const db = await openSkaperDb()
+async function getStore(
+  storeName: StoreName,
+  mode: IDBTransactionMode,
+  databaseName: string
+) {
+  const db = await openSkaperDb(databaseName)
   return db.transaction(storeName, mode).objectStore(storeName)
 }
 
-export { STORE_NAMES }
+export { DB_NAME, STORE_NAMES }

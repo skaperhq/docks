@@ -19,6 +19,8 @@ const html = handler({ html: (content) => content })
 assert.match(html, /^<!doctype html>/)
 assert.match(html, /<title>Example API<\/title>/)
 assert.match(html, /const openApiUrl = "\/docs\/openapi.json"/)
+assert.match(html, /const workspaceId = "auto-[a-f0-9]{24}"/)
+assert.match(html, /globalThis\.__SKAPER_WORKSPACE_ID__ = workspaceId/)
 assert.match(html, /<style nonce="test-nonce">/)
 assert.match(html, /<script type="module" nonce="test-nonce">/)
 assert.doesNotMatch(html, /process\.env/)
@@ -31,17 +33,32 @@ assert.throws(() => {
   })
 }, TypeError)
 
+assert.throws(() => {
+  skaperUI({
+    url: "/docs/openapi.json",
+    workspaceId: " ",
+  })
+}, TypeError)
+
+const isolatedHtml = skaperUI({
+  url: "/docs/openapi.json",
+  workspaceId: "repo-billing",
+})({ html: (content) => content })
+assert.match(isolatedHtml, /const workspaceId = "repo-billing"/)
+
 // Test password hashing and HTML injection
-const expectedHash = crypto.createHash("sha256").update("supersecretpassword").digest("hex")
+const expectedHash = crypto
+  .createHash("sha256")
+  .update("supersecretpassword")
+  .digest("hex")
 const passwordHandler = skaperUI({
   url: "/docs/openapi.json",
   password: "supersecretpassword",
 })
 const passwordHtml = passwordHandler({ html: (content) => content })
 assert.match(passwordHtml, new RegExp(`const passwordHash = "${expectedHash}"`))
-assert.match(passwordHtml, /class="skaper-login-container"/)
-assert.match(passwordHtml, /id="skaper-password-input"/)
-
+assert.match(passwordHtml, /class=\\"skaper-login-container\\"/)
+assert.match(passwordHtml, /id=\\"skaper-password-input\\"/)
 
 let expressType
 let expressHtml

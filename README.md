@@ -46,17 +46,21 @@ The configured URL is fetched by the browser, so it can be relative to the host 
 skaperUI({
   url: "/docs/openapi.json",
   title: "Acme API",
+  workspaceId: "acme-api",
   nonce: "your-csp-nonce",
 })
 ```
 
 - `url` is required and points to the OpenAPI JSON document.
 - `title` sets the generated HTML document title.
+- `workspaceId` is a stable identifier for this API's browser data. Skaper
+  derives one from the host project and OpenAPI URL by default; set it
+  explicitly when multiple apps are launched from the same project directory.
 - `nonce` applies a Content Security Policy nonce to the embedded style and module script.
 
 Skaper serves one complete HTML document. Its browser code and visual styles are embedded in that document, so there is no CSS or JavaScript asset for the host application to import or serve.
 
-Request tabs, environments, variables, saved responses, and response preferences use IndexedDB in the developer's browser. No server database or writable filesystem is required.
+Request tabs, environments, variables, saved responses, and response preferences use a workspace-scoped IndexedDB database in the developer's browser. Different repositories do not share data even when they reuse the same localhost origin. No server database or writable filesystem is required.
 
 ## Development
 

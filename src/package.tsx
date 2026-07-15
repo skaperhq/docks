@@ -14,6 +14,7 @@ import type { StorageAdapter } from "./lib/storage-adapter"
 import { EnvironmentPage } from "./routes/environment"
 import { WorkspacePage } from "./routes/index"
 import { cn } from "./lib/utils"
+import { getRuntimeWorkspaceId, getWorkspaceStorageKey } from "./lib/workspace"
 
 type SkaperProps = {
   className?: string
@@ -21,6 +22,7 @@ type SkaperProps = {
   initialPage?: "workspace" | "environment"
   defaultTheme?: Theme
   storageAdapter?: StorageAdapter
+  workspaceId?: string
 }
 
 /**
@@ -33,6 +35,7 @@ export function SkaperApp({
   initialPage = "workspace",
   defaultTheme = "system",
   storageAdapter,
+  workspaceId = getRuntimeWorkspaceId(),
 }: SkaperProps) {
   const [page, setPage] = React.useState(initialPage)
   const [operationId, setOperationId] = React.useState(initialOperationId)
@@ -40,7 +43,7 @@ export function SkaperApp({
   if (storageAdapter) {
     setDocksStorageAdapter(storageAdapter)
   } else if (!isDocksStorageAdapterConfigured()) {
-    setDocksStorageAdapter(createIndexedDbStorageAdapter())
+    setDocksStorageAdapter(createIndexedDbStorageAdapter(workspaceId))
   }
 
   function selectOperation(nextOperationId?: string) {
@@ -50,8 +53,11 @@ export function SkaperApp({
 
   return (
     <div className={cn("h-svh min-h-144 w-full", className)}>
-      <ThemeProvider defaultTheme={defaultTheme}>
-        <EnvironmentProvider>
+      <ThemeProvider
+        defaultTheme={defaultTheme}
+        storageKey={getWorkspaceStorageKey(workspaceId, "ui-theme")}
+      >
+        <EnvironmentProvider workspaceId={workspaceId}>
           {page === "environment" ? (
             <EnvironmentPage
               onSelectWorkspace={() => setPage("workspace")}

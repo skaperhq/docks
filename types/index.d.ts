@@ -7,6 +7,11 @@ export type SkaperUIOptions = {
   nonce?: string
   /** Optional password protecting the UI. */
   password?: string
+  /**
+   * Stable identifier used to isolate browser storage for this API workspace.
+   * Defaults to an identifier derived from the host project and OpenAPI URL.
+   */
+  workspaceId?: string
 }
 
 export type HonoContextLike = {

@@ -28,17 +28,28 @@ type WorkspaceSetting = {
 
 const DEFAULT_RESPONSE_PANEL_HEIGHT = 360
 const MAX_SAVED_RESPONSES = 100
+const DB_NAME_PREFIX = "skaper-docks"
 
 /**
  * Creates the default browser-only storage adapter backed by IndexedDB.
  * Each method performs its own transaction, so callers do not need to manage
  * database handles or transaction lifetimes.
  */
-export function createIndexedDbStorageAdapter(): StorageAdapter {
+export function createIndexedDbStorageAdapter(
+  workspaceId = "development"
+): StorageAdapter {
+  const normalizedWorkspaceId = workspaceId.trim()
+  if (!normalizedWorkspaceId) {
+    throw new TypeError("Skaper workspaceId must be a non-empty string.")
+  }
+
+  const databaseName = `${DB_NAME_PREFIX}:${encodeURIComponent(normalizedWorkspaceId)}`
+
   return {
     async getEnvironments() {
       const environments = await getAllFromStore<EnvironmentInput>(
-        STORE_NAMES.environments
+        STORE_NAMES.environments,
+        databaseName
       )
 
       return environments.sort((a, b) => a.name.localeCompare(b.name))
@@ -50,18 +61,22 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
         (environment) => environment.id === data.id
       )
 
-      await putInStore<EnvironmentInput>(STORE_NAMES.environments, {
-        id: data.id,
-        name: data.name,
-        baseUrl: data.baseUrl,
-        variables: existing?.variables ?? [],
-      })
+      await putInStore<EnvironmentInput>(
+        STORE_NAMES.environments,
+        {
+          id: data.id,
+          name: data.name,
+          baseUrl: data.baseUrl,
+          variables: existing?.variables ?? [],
+        },
+        databaseName
+      )
 
       return { success: true }
     },
 
     async deleteEnvironment({ data: id }) {
-      await deleteFromStore(STORE_NAMES.environments, id)
+      await deleteFromStore(STORE_NAMES.environments, id, databaseName)
 
       return { success: true }
     },
@@ -83,10 +98,14 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
           )
         : [...environment.variables, data.variable]
 
-      await putInStore<EnvironmentInput>(STORE_NAMES.environments, {
-        ...environment,
-        variables,
-      })
+      await putInStore<EnvironmentInput>(
+        STORE_NAMES.environments,
+        {
+          ...environment,
+          variables,
+        },
+        databaseName
+      )
 
       return { success: true }
     },
@@ -99,12 +118,16 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
         return { success: false }
       }
 
-      await putInStore<EnvironmentInput>(STORE_NAMES.environments, {
-        ...environment,
-        variables: environment.variables.filter(
-          (variable) => variable.id !== data.varId
-        ),
-      })
+      await putInStore<EnvironmentInput>(
+        STORE_NAMES.environments,
+        {
+          ...environment,
+          variables: environment.variables.filter(
+            (variable) => variable.id !== data.varId
+          ),
+        },
+        databaseName
+      )
 
       return { success: true }
     },
@@ -112,7 +135,11 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
     async bulkSyncEnvironments({ data: environments }) {
       await Promise.all(
         environments.map((environment) =>
-          putInStore<EnvironmentInput>(STORE_NAMES.environments, environment)
+          putInStore<EnvironmentInput>(
+            STORE_NAMES.environments,
+            environment,
+            databaseName
+          )
         )
       )
 
@@ -127,11 +154,23 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
         collections,
         customRequests,
       ] = await Promise.all([
-        getAllFromStore<PersistedRequestTab>(STORE_NAMES.requestTabs),
-        getAllFromStore<PersistedSavedResponse>(STORE_NAMES.savedResponses),
-        getAllFromStore<WorkspaceSetting>(STORE_NAMES.settings),
-        getAllFromStore<PersistedCollection>(STORE_NAMES.collections),
-        getAllFromStore<PersistedCustomRequest>(STORE_NAMES.customRequests),
+        getAllFromStore<PersistedRequestTab>(
+          STORE_NAMES.requestTabs,
+          databaseName
+        ),
+        getAllFromStore<PersistedSavedResponse>(
+          STORE_NAMES.savedResponses,
+          databaseName
+        ),
+        getAllFromStore<WorkspaceSetting>(STORE_NAMES.settings, databaseName),
+        getAllFromStore<PersistedCollection>(
+          STORE_NAMES.collections,
+          databaseName
+        ),
+        getAllFromStore<PersistedCustomRequest>(
+          STORE_NAMES.customRequests,
+          databaseName
+        ),
       ])
       const settingMap = new Map(settings.map((item) => [item.key, item.value]))
       const persistedHeight = Number(settingMap.get("response_panel_height"))
@@ -158,23 +197,31 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
     },
 
     async upsertRequestTab({ data }) {
-      await putInStore<PersistedRequestTab>(STORE_NAMES.requestTabs, {
-        ...data,
-        requestTab: normalizeRequestTab(data.requestTab),
-        updatedAt: new Date().toISOString(),
-      })
+      await putInStore<PersistedRequestTab>(
+        STORE_NAMES.requestTabs,
+        {
+          ...data,
+          requestTab: normalizeRequestTab(data.requestTab),
+          updatedAt: new Date().toISOString(),
+        },
+        databaseName
+      )
 
       return { success: true }
     },
 
     async deleteRequestTab({ data: operationId }) {
-      await deleteFromStore(STORE_NAMES.requestTabs, operationId)
+      await deleteFromStore(STORE_NAMES.requestTabs, operationId, databaseName)
 
       return { success: true }
     },
 
     async saveWorkspaceSetting({ data }) {
-      await putInStore<WorkspaceSetting>(STORE_NAMES.settings, data)
+      await putInStore<WorkspaceSetting>(
+        STORE_NAMES.settings,
+        data,
+        databaseName
+      )
 
       return { success: true }
     },
@@ -201,14 +248,15 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
 
       await putInStore<PersistedSavedResponse>(
         STORE_NAMES.savedResponses,
-        savedResponse
+        savedResponse,
+        databaseName
       )
 
       return migrateSavedResponseV3(savedResponse)
     },
 
     async deleteSavedResponse({ data }) {
-      await deleteFromStore(STORE_NAMES.savedResponses, data.id)
+      await deleteFromStore(STORE_NAMES.savedResponses, data.id, databaseName)
 
       return { success: true }
     },
@@ -216,7 +264,8 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
     async getSavedResponse({ data: id }): Promise<SavedResponseDetail | null> {
       const savedResponse = await getFromStore<PersistedSavedResponse>(
         STORE_NAMES.savedResponses,
-        id
+        id,
+        databaseName
       )
 
       if (!savedResponse) {
@@ -227,31 +276,43 @@ export function createIndexedDbStorageAdapter(): StorageAdapter {
     },
 
     async createCollection({ data }) {
-      await putInStore<PersistedCollection>(STORE_NAMES.collections, data)
+      await putInStore<PersistedCollection>(
+        STORE_NAMES.collections,
+        data,
+        databaseName
+      )
 
       return data
     },
 
     async updateCollection({ data }) {
-      await putInStore<PersistedCollection>(STORE_NAMES.collections, data)
+      await putInStore<PersistedCollection>(
+        STORE_NAMES.collections,
+        data,
+        databaseName
+      )
 
       return data
     },
 
     async deleteCollection({ data: id }) {
-      await deleteFromStore(STORE_NAMES.collections, id)
+      await deleteFromStore(STORE_NAMES.collections, id, databaseName)
 
       return { success: true }
     },
 
     async upsertCustomRequest({ data }) {
-      await putInStore<PersistedCustomRequest>(STORE_NAMES.customRequests, data)
+      await putInStore<PersistedCustomRequest>(
+        STORE_NAMES.customRequests,
+        data,
+        databaseName
+      )
 
       return data
     },
 
     async deleteCustomRequest({ data: id }) {
-      await deleteFromStore(STORE_NAMES.customRequests, id)
+      await deleteFromStore(STORE_NAMES.customRequests, id, databaseName)
 
       return { success: true }
     },

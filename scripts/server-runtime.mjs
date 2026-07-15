@@ -229,8 +229,19 @@ export function skaperUI(options) {
     throw new TypeError("skaperUI password option must be a string.")
   }
 
+  if (
+    options.workspaceId !== undefined &&
+    (typeof options.workspaceId !== "string" || !options.workspaceId.trim())
+  ) {
+    throw new TypeError(
+      "skaperUI workspaceId option must be a non-empty string."
+    )
+  }
+
+  const workspaceId =
+    options.workspaceId?.trim() || createDefaultWorkspaceId(options.url)
   const hashedPassword = options.password ? sha256(options.password) : null
-  const html = renderSkaperHtml(options, hashedPassword)
+  const html = renderSkaperHtml(options, hashedPassword, workspaceId)
 
   return function skaperHandler(context, response) {
     if (context && typeof context.html === "function") {
@@ -250,10 +261,14 @@ export function skaperUI(options) {
 
 export default skaperUI
 
-function renderSkaperHtml(options, hashedPassword) {
+function renderSkaperHtml(options, hashedPassword, workspaceId) {
   const title = escapeHtml(options.title || "Skaper · API Workspace")
   const url = JSON.stringify(options.url).replaceAll("<", "\\u003c")
   const loginTemplate = JSON.stringify(SKAPER_LOGIN_TEMPLATE).replaceAll(
+    "<",
+    "\\u003c"
+  )
+  const serializedWorkspaceId = JSON.stringify(workspaceId).replaceAll(
     "<",
     "\\u003c"
   )
@@ -273,7 +288,10 @@ function renderSkaperHtml(options, hashedPassword) {
     <div id="skaper-root"></div>
     <script type="module"${nonceAttribute}>
       // Apply theme immediately
-      const savedTheme = localStorage.getItem("docks-ui-theme") || "system";
+      const workspaceId = ${serializedWorkspaceId};
+      const themeStorageKey = "skaper:" + encodeURIComponent(workspaceId) + ":ui-theme";
+      const authStorageKey = "__skaper_auth:" + encodeURIComponent(workspaceId);
+      const savedTheme = localStorage.getItem(themeStorageKey) || "system";
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       const activeTheme = savedTheme === "system" ? systemTheme : savedTheme;
       document.documentElement.classList.add(activeTheme);
@@ -288,6 +306,7 @@ function renderSkaperHtml(options, hashedPassword) {
             throw new Error("Unable to load OpenAPI document (" + response.status + ")");
           }
           globalThis.__SKAPER_OPENAPI_SPEC__ = await response.json();
+          globalThis.__SKAPER_WORKSPACE_ID__ = workspaceId;
           ${UI_SCRIPT}
         } catch (error) {
           const root = document.getElementById("skaper-root");
@@ -304,7 +323,7 @@ function renderSkaperHtml(options, hashedPassword) {
       const passwordHash = ${hashedPassword ? JSON.stringify(hashedPassword) : "null"};
 
       if (passwordHash) {
-        const isAuthenticated = sessionStorage.getItem("__skaper_auth") === passwordHash;
+        const isAuthenticated = sessionStorage.getItem(authStorageKey) === passwordHash;
         if (isAuthenticated) {
           loadSkaper();
         } else {
@@ -319,7 +338,7 @@ function renderSkaperHtml(options, hashedPassword) {
             e.preventDefault();
             const inputHash = sha256(input.value);
             if (inputHash === passwordHash) {
-              sessionStorage.setItem("__skaper_auth", passwordHash);
+              sessionStorage.setItem(authStorageKey, passwordHash);
               root.innerHTML = "";
               loadSkaper();
             } else {
@@ -338,6 +357,16 @@ function renderSkaperHtml(options, hashedPassword) {
     </script>
   </body>
 </html>`
+}
+
+function createDefaultWorkspaceId(openApiUrl) {
+  const workingDirectory =
+    typeof process !== "undefined" && typeof process.cwd === "function"
+      ? process.cwd()
+      : "browser"
+  const identity = encodeURIComponent(`${workingDirectory}\u0000${openApiUrl}`)
+
+  return `auto-${sha256(identity).slice(0, 24)}`
 }
 
 function escapeHtml(value) {

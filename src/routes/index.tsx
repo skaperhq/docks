@@ -3,8 +3,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useEnvironment } from "@/components/environment-provider"
 import {
   ArrowLeftRightIcon,
+  ArrowRightIcon,
   LockIcon,
   ServerIcon,
+  Settings2Icon,
   TagsIcon,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -12,6 +14,15 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   Select,
   SelectContent,
@@ -966,7 +977,11 @@ export function WorkspacePage({
                 curlCommand={requestCurlCommand}
               />
             ) : (
-              <ApiOverview />
+              <ApiOverview
+                savedResponses={savedResponses}
+                onSelectSavedResponse={handleSelectSavedResponse}
+                onSelectEnvironment={onSelectEnvironment}
+              />
             )}
           </main>
         </ScrollArea>
@@ -1243,60 +1258,244 @@ function CustomRequestAddressBar({
   )
 }
 
-function ApiOverview() {
+function ApiOverview({
+  savedResponses,
+  onSelectSavedResponse,
+  onSelectEnvironment,
+}: {
+  savedResponses: SavedResponseSummary[]
+  onSelectSavedResponse: (response: SavedResponseSummary) => void
+  onSelectEnvironment: () => void
+}) {
+  const { activeEnvironment } = useEnvironment()
   const tags = new Set(apiOperations.map((operation) => operation.tag))
 
   return (
-    <section className="flex max-w-5xl flex-col gap-8">
-      <div className="flex flex-col gap-3">
-        <div className="text-sm text-muted-foreground">
-          OpenAPI {apiSpecVersion} / API {apiInfo.version}
+    <section className="mx-auto flex w-full max-w-5xl flex-col">
+      <header className="flex flex-col gap-7 py-5 sm:py-5">
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row">
+          <div className="flex max-w-3xl flex-col gap-2">
+            <h1 className="text-3xl font-medium tracking-tight text-foreground">
+              {apiInfo.title}
+            </h1>
+            {apiInfo.description ? (
+              <p className="max-w-2xl text-[15px] leading-6 text-muted-foreground">
+                {apiInfo.description}
+              </p>
+            ) : null}
+          </div>
+          <Button type="button" variant="outline" onClick={onSelectEnvironment}>
+            <Settings2Icon data-icon="inline-start" />
+            Environment
+          </Button>
         </div>
-        <h1 className="text-3xl font-semibold tracking-normal text-foreground">
-          {apiInfo.title}
-        </h1>
-        {apiInfo.description ? (
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            {apiInfo.description}
-          </p>
-        ) : null}
-      </div>
+      </header>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <OverviewStat
-          label="Endpoints"
-          value={apiOperations.length}
-          icon={ArrowLeftRightIcon}
-        />
-        <OverviewStat label="Tags" value={tags.size} icon={TagsIcon} />
-        <OverviewStat
-          label="Servers"
-          value={apiServers.length}
-          icon={ServerIcon}
-        />
-      </div>
+      <Separator />
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-foreground">Servers</h2>
-        <div className="overflow-hidden rounded-sm border border-border">
-          {apiServers.length > 0 ? (
-            apiServers.map((server) => (
-              <div
-                key={server.url}
-                className="border-b border-border px-4 py-3 font-mono text-sm last:border-b-0"
-              >
-                {server.url}
-              </div>
-            ))
-          ) : (
-            <div className="px-4 py-3 text-sm text-muted-foreground">
-              No servers are defined in this specification.
-            </div>
-          )}
+      <section className="flex flex-col gap-4 py-8">
+        <h2 className="text-base font-medium text-foreground">API surface</h2>
+        <div className="grid divide-y divide-border overflow-hidden rounded-lg border border-border bg-background sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <OverviewStat
+            label="Endpoints"
+            value={apiOperations.length}
+            icon={ArrowLeftRightIcon}
+          />
+          <OverviewStat label="Tags" value={tags.size} icon={TagsIcon} />
+          <OverviewStat
+            label="Servers"
+            value={apiServers.length}
+            icon={ServerIcon}
+          />
         </div>
-      </div>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-5 py-8">
+        <div className="flex items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-base font-medium text-foreground">
+              Saved responses
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Responses saved from previous requests.
+            </p>
+          </div>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {savedResponses.length}
+          </span>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-20">Response</TableHead>
+                <TableHead>Endpoint</TableHead>
+                <TableHead className="w-20">Method</TableHead>
+                <TableHead className="w-20">Status</TableHead>
+                <TableHead className="w-24">Duration</TableHead>
+                <TableHead className="w-20">Size</TableHead>
+                <TableHead className="w-32">Saved</TableHead>
+                <TableHead className="w-12">
+                  <span className="sr-only">Open</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {savedResponses.length > 0 ? (
+                savedResponses.map((response) => (
+                  <TableRow key={response.id}>
+                    <TableCell className="max-w-44 truncate font-normal text-foreground">
+                      {response.name}
+                    </TableCell>
+                    <TableCell className="max-w-20">
+                      <p className="truncate text-muted-foreground">
+                        {response.path}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <p
+                        className={cn(
+                          "text-[11px] font-normal",
+                          getMethodClassName(response.method)
+                        )}
+                      >
+                        {response.method}
+                      </p>
+                    </TableCell>
+
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "text-xs font-normal tabular-nums",
+                          response.ok ? "text-foreground" : "text-destructive"
+                        )}
+                      >
+                        {response.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {Math.round(response.durationMs)} ms
+                    </TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {formatSavedResponseSize(response.sizeBytes)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatSavedResponseDate(response.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Open saved response ${response.name}`}
+                        onClick={() => onSelectSavedResponse(response)}
+                      >
+                        <ArrowRightIcon data-icon="inline-end" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    No saved responses yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+
+      <Separator />
+
+      <section className="grid gap-10 py-8 md:grid-cols-2 md:gap-16">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-base font-medium text-foreground">Servers</h2>
+            <p className="text-sm text-muted-foreground">
+              Origins declared by the OpenAPI specification.
+            </p>
+          </div>
+          <div className="flex flex-col">
+            {apiServers.length > 0 ? (
+              apiServers.map((server, index) => (
+                <React.Fragment key={server.url}>
+                  <div className="flex items-center gap-3 py-3.5">
+                    <ServerIcon
+                      className="size-4 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <code className="min-w-0 flex-1 truncate text-xs text-foreground">
+                      {server.url}
+                    </code>
+                  </div>
+                  {index < apiServers.length - 1 ? <Separator /> : null}
+                </React.Fragment>
+              ))
+            ) : (
+              <p className="py-3.5 text-sm text-muted-foreground">
+                No servers are defined.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-base font-medium text-foreground">Workspace</h2>
+            <p className="text-sm text-muted-foreground">
+              Current request context and specification details.
+            </p>
+          </div>
+          <div className="flex flex-col">
+            <OverviewDetail
+              label="Environment"
+              value={activeEnvironment?.name ?? "Not selected"}
+            />
+            <Separator />
+            <OverviewDetail label="OpenAPI" value={apiSpecVersion} />
+            <Separator />
+            <OverviewDetail label="API version" value={apiInfo.version} />
+          </div>
+        </div>
+      </section>
     </section>
   )
+}
+
+function formatSavedResponseDate(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date)
+}
+
+function formatSavedResponseSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  const kilobytes = bytes / 1024
+  if (kilobytes < 1024) {
+    return `${kilobytes.toFixed(1)} KB`
+  }
+
+  return `${(kilobytes / 1024).toFixed(1)} MB`
 }
 
 function OverviewStat({
@@ -1309,18 +1508,23 @@ function OverviewStat({
   icon: LucideIcon
 }) {
   return (
-    <div className="rounded-sm border border-border bg-card p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-2xl font-semibold text-foreground tabular-nums">
-            {value}
-          </div>
-          <div className="mt-1 text-sm text-muted-foreground">{label}</div>
+    <div className="flex items-start justify-between gap-6 p-5 sm:p-6">
+      <div className="flex flex-col gap-1">
+        <div className="text-2xl font-medium tracking-tight text-foreground tabular-nums">
+          {value}
         </div>
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50 text-muted-foreground">
-          <Icon className="size-4" aria-hidden="true" />
-        </div>
+        <div className="text-sm text-muted-foreground">{label}</div>
       </div>
+      <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+    </div>
+  )
+}
+
+function OverviewDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3.5 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="truncate font-medium text-foreground">{value}</span>
     </div>
   )
 }
