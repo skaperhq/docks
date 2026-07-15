@@ -49,7 +49,7 @@ export function SkaperApp({
   }
 
   return (
-    <div className={cn("h-svh min-h-[36rem] w-full", className)}>
+    <div className={cn("h-svh min-h-144 w-full", className)}>
       <ThemeProvider defaultTheme={defaultTheme}>
         <EnvironmentProvider>
           {page === "environment" ? (

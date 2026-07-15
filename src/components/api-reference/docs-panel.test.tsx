@@ -45,10 +45,10 @@ describe("DocsPanel", () => {
   })
 
   test("sizes read-only code blocks to their content with a maximum height", () => {
-    expect(getCodeBlockHeight("first\nsecond")).toBe(72)
+    expect(getCodeBlockHeight("first\nsecond")).toBe(78)
     expect(
       getCodeBlockHeight(Array.from({ length: 8 }, () => "line").join("\n"))
-    ).toBe(190)
+    ).toBe(204)
     expect(
       getCodeBlockHeight(Array.from({ length: 100 }, () => "line").join("\n"))
     ).toBe(360)

@@ -21,6 +21,19 @@ describe("OpenAPI model", () => {
     )
   })
 
+  test("parses custom ws endpoint correctly", () => {
+    const wsOp = apiOperations.find((op) => op.path === "/notifications/ws")
+    expect(wsOp).toBeDefined()
+    expect(wsOp?.method).toBe("WS")
+    expect(wsOp?.parameters).toContainEqual(
+      expect.objectContaining({
+        name: "token",
+        location: "query",
+        required: true,
+      })
+    )
+  })
+
   test("filters operation groups by searchable OpenAPI metadata", () => {
     const groups = getOperationGroups({ query: "login", requestOnly: false })
     const matchingIds = groups.flatMap((group) =>

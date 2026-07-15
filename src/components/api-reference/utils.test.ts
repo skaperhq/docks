@@ -130,6 +130,8 @@ describe("API reference utilities", () => {
   test("returns stable foreground and background styles for HTTP methods", () => {
     expect(getMethodClassName("GET")).toContain("emerald")
     expect(getBgMethodClassName("DELETE")).toContain("rose")
+    expect(getMethodClassName("WS")).toContain("violet")
+    expect(getBgMethodClassName("WS")).toContain("violet")
     expect(getMethodClassName("OPTIONS")).toBe("text-muted-foreground")
     expect(getBgMethodClassName("OPTIONS")).toBe("bg-muted")
   })

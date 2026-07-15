@@ -132,7 +132,9 @@ export function AppSidebar({
     return groups
       .map((g) => ({
         ...g,
-        operations: g.operations.filter((op) => op.requestMode !== "sse"),
+        operations: g.operations.filter(
+          (op) => op.requestMode !== "sse" && op.method !== "WS"
+        ),
       }))
       .filter((g) => g.operations.length > 0)
   }, [groups])
@@ -142,6 +144,15 @@ export function AppSidebar({
       .map((g) => ({
         ...g,
         operations: g.operations.filter((op) => op.requestMode === "sse"),
+      }))
+      .filter((g) => g.operations.length > 0)
+  }, [groups])
+
+  const websocketOpenApiGroups = React.useMemo(() => {
+    return groups
+      .map((g) => ({
+        ...g,
+        operations: g.operations.filter((op) => op.method === "WS"),
       }))
       .filter((g) => g.operations.length > 0)
   }, [groups])
@@ -206,9 +217,10 @@ export function AppSidebar({
         (op) => op.id === selectedOperationId
       )
       const isSse = selectedOp?.requestMode === "sse"
-      setHttpOpen(!isSse)
+      const isWs = selectedOp?.method === "WS"
+      setHttpOpen(!isSse && !isWs)
       setSseOpen(isSse)
-      setWebsocketOpen(false)
+      setWebsocketOpen(isWs)
       return
     }
 
@@ -395,10 +407,29 @@ export function AppSidebar({
           <TransportSection
             label="WebSocket"
             icon={<PlugIcon className="w-4 text-sidebar-foreground/60" />}
-            count={customRequestsByGroup.websocket.length}
+            count={
+              websocketOpenApiGroups.reduce(
+                (acc, g) => acc + g.operations.length,
+                0
+              ) + customRequestsByGroup.websocket.length
+            }
             open={websocketOpen}
             onOpenChange={setWebsocketOpen}
-            openApiContent={<EmptyProtocolFolder label="WebSocket" />}
+            openApiContent={
+              websocketOpenApiGroups.length > 0 ? (
+                <OpenApiRequestTree
+                  groups={websocketOpenApiGroups}
+                  selectedOperationId={selectedOperationId}
+                  savedResponsesByOperation={savedResponsesByOperation}
+                  selectedSavedResponseId={selectedSavedResponseId}
+                  onSelectOperation={onSelectOperation}
+                  onSelectSavedResponse={onSelectSavedResponse}
+                  onDeleteSavedResponse={onDeleteSavedResponse}
+                />
+              ) : (
+                <EmptyProtocolFolder label="WebSocket" />
+              )
+            }
             customRequests={customRequestsByGroup.websocket}
             selectedRequestId={selectedRequestId}
             onSelectCustomRequest={onSelectCustomRequest}

@@ -2,7 +2,15 @@ import openApiSpecJson from "@/data/mock-openapi.json"
 import type { RequestMode } from "./api-reference-actions"
 
 type HttpMethod =
-  "delete" | "get" | "head" | "options" | "patch" | "post" | "put" | "trace"
+  | "delete"
+  | "get"
+  | "head"
+  | "options"
+  | "patch"
+  | "post"
+  | "put"
+  | "trace"
+  | "ws"
 
 type ReferenceObject = {
   $ref: string
@@ -154,6 +162,7 @@ const httpMethods = new Set<HttpMethod>([
   "post",
   "put",
   "trace",
+  "ws",
 ])
 
 function isHttpMethod(value: string): value is HttpMethod {

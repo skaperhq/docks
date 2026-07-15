@@ -272,7 +272,7 @@ export function WorkspacePage({
     ? (responseStateByOperationId[selectedRequest.id] ?? idleResponseState)
     : idleResponseState
   const requestPreviewSnapshot = React.useMemo(() => {
-    if (!selectedRequest || selectedRequest.transport === "websocket") {
+    if (!selectedRequest) {
       return undefined
     }
 
@@ -283,6 +283,21 @@ export function WorkspacePage({
           baseUrl: activeEnvironment.baseUrl,
         }
       : null
+
+    if (selectedRequest.transport === "websocket") {
+      const wsRequest = buildFetchRequest({
+        baseUrl: fullRequestUrl,
+        method: selectedRequest.method,
+        draft: requestDraft,
+        resolveVariables,
+        environment,
+      })
+      wsRequest.requestSnapshot.transport = "websocket"
+      wsRequest.requestSnapshot.url = wsRequest.url
+        .replace(/^http:/i, "ws:")
+        .replace(/^https:/i, "wss:")
+      return wsRequest.requestSnapshot
+    }
 
     if (selectedRequest.mode === "sse") {
       const sseRequest = buildFetchRequest({
@@ -778,9 +793,23 @@ export function WorkspacePage({
 
     try {
       if (selectedRequest.transport === "websocket") {
+        const wsRequest = buildFetchRequest({
+          baseUrl: fullRequestUrl,
+          method: selectedRequest.method,
+          draft: requestDraft,
+          resolveVariables,
+          environment: activeEnvironment
+            ? {
+                id: activeEnvironment.id,
+                name: activeEnvironment.name,
+                baseUrl: activeEnvironment.baseUrl,
+              }
+            : null,
+        })
+
         connectWebSocketRequest({
           request: selectedRequest,
-          url: resolveVariables(fullRequestUrl),
+          url: wsRequest.url,
           draft: requestDraft,
           startedAt,
           setRequestSnapshotByOperationId,
@@ -1314,7 +1343,7 @@ function toOperationWorkspaceRequest(
     tag: operation.tag,
     summary: operation.summary,
     requestUrl: operation.requestUrl,
-    transport: "http",
+    transport: operation.method === "WS" ? "websocket" : "http",
     mode: operation.requestMode,
     isOpenApi: true,
     hasEventStreamResponse: operation.hasEventStreamResponse,
@@ -1396,7 +1425,7 @@ function createStreamSnapshot({
   environment: SavedRequestSnapshot["environment"]
 }): SavedRequestSnapshot {
   return {
-    method: "GET",
+    method: request.method,
     transport: request.transport,
     mode: request.mode,
     url,
@@ -1458,7 +1487,8 @@ function connectWebSocketRequest({
   activeStreamRef: { current: { id: string; close: () => void } | null }
   environment: SavedRequestSnapshot["environment"]
 }) {
-  const socket = new WebSocket(url)
+  const wsUrl = url.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")
+  const socket = new WebSocket(wsUrl)
   let bodyText = "[connecting] WebSocket connection started\n"
 
   activeStreamRef.current = {
@@ -1467,7 +1497,7 @@ function connectWebSocketRequest({
   }
   setRequestSnapshotByOperationId((snapshots) => ({
     ...snapshots,
-    [request.id]: createStreamSnapshot({ request, url, draft, environment }),
+    [request.id]: createStreamSnapshot({ request, url: wsUrl, draft, environment }),
   }))
 
   socket.onopen = () => {

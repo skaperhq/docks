@@ -83,6 +83,8 @@ export function getMethodClassName(method: string) {
       return "text-blue-600 dark:text-[#74aef6]"
     case "DELETE":
       return "text-rose-600 dark:text-[#ff8d7a]"
+    case "WS":
+      return "text-violet-600 dark:text-violet-400"
     default:
       return "text-muted-foreground"
   }
@@ -99,6 +101,8 @@ export function getBgMethodClassName(method: string) {
       return "bg-blue-50 dark:bg-[#00274d]"
     case "DELETE":
       return "bg-rose-50 dark:bg-[#4d1a00]"
+    case "WS":
+      return "bg-violet-50 dark:bg-[#2e1065]"
     default:
       return "bg-muted"
   }

@@ -12,7 +12,14 @@ export type RequestTransport = "http" | "websocket"
 export type RequestMode = "standard" | "sse"
 
 export type RequestMethod =
-  "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS"
+  | "WS"
 
 export type PersistedCollection = {
   id: string

@@ -247,9 +247,10 @@ function CopyButton({
 export function getCodeBlockHeight(value: string) {
   const lineCount = Math.max(1, value.split("\n").length)
   // CodeMirror uses 12px vertical content padding, plus the block border.
-  // Keep a small allowance so the final line never sits under the border.
-  const editorChromeHeight = 28
-  const lineHeight = 20.15
+  // We use a larger chrome height and line height to avoid subpixel clipping
+  // and accommodate horizontal scrollbars if any lines overflow.
+  const editorChromeHeight = 36
+  const lineHeight = 21
 
   return Math.min(
     360,
@@ -275,14 +276,14 @@ function ResponseSchema({ response }: { response: ApiResponse }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="min-w-48 pl-8 text-muted-foreground">
+            <TableHead className="min-w-48 pl-4 text-muted-foreground">
               Field
             </TableHead>
             <TableHead className="w-48 text-muted-foreground">Type</TableHead>
             <TableHead className="w-32 text-muted-foreground">
               Required
             </TableHead>
-            <TableHead className="min-w-64 pr-8 text-muted-foreground">
+            <TableHead className="min-w-64 pr-4 text-muted-foreground">
               Description
             </TableHead>
           </TableRow>

@@ -7059,10 +7059,22 @@
       }
     },
     "/notifications/ws": {
-      "get": {
+      "ws": {
         "tags": ["Notifications"],
         "summary": "WebSocket endpoint for live notification events",
         "description": "Connect with /notifications/ws?token=<accessToken>. Emits notification.connected, notification.hydrate, and notification.created events. On notification.hydrate, call GET /notifications to fetch the latest state.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "description": "Access token for authentication",
+            "schema": {
+              "type": "string",
+              "example": "atk1.W62blW0WEwWn1Cr4.RWEM46aUHdtv-pKMP0o6kA.XNxN0Oevb6j7h_GhOGg9eEFzgKwInSRayNbu3YRDGc5ZBiCJlG-btUjHeUMrFbzvs9y0VMURH4DzKruu7gp1oqBVccVlQBY7N2drlD9ExNzIO9rn-UfNjZAlHtfChVFk4nH3qx1zdKuGyEl8406K2yj6Ev3Go-mwDeeNbdR7vXUX64lbj821Qi9lzVd3Qk_98Jw-3uftSJzooEC7yEEWncs7q2G-MtLfoRARWwo3cA4YJPVde_y39KfIAkIl_QNxINvg6EgEIMdpl6jCOtX06gfOrUnR7oZ75xS1h1_P5IR3282w1ur47nSgL9V760ivTNPyR3DtisCk0taNOZF4Sp3svUw-xEzn_LlOKLVJ8cEr8slvW_WB"
+            }
+          }
+        ],
         "responses": {
           "101": { "description": "WebSocket upgrade" },
           "401": { "description": "Invalid or expired access token" }
