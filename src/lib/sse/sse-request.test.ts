@@ -92,7 +92,9 @@ describe("SSE requests", () => {
     expect(onOpen).toHaveBeenCalledOnce()
 
     const encoder = new TextEncoder()
-    controller!.enqueue(encoder.encode("data: message 1\n\ndata: message 2\n\n"))
+    controller!.enqueue(
+      encoder.encode("data: message 1\n\ndata: message 2\n\n")
+    )
 
     await new Promise((resolve) => setTimeout(resolve, 5))
 

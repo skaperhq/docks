@@ -89,7 +89,7 @@ describe("buildCurlCommand", () => {
 
     expect(command).toContain("curl --request POST")
     expect(command).toContain("'Authorization: Bearer x'")
-    expect(command).toContain("'{\"foo\":\"bar\"}'")
+    expect(command).toContain('\'{"foo":"bar"}\'')
   })
 })
 

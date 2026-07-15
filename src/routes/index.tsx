@@ -48,10 +48,7 @@ import type {
 import { buildFetchRequest } from "@/lib/api-request"
 import { buildCurlCommand } from "@/lib/request-curl"
 import { requestDraftFromSnapshot } from "@/lib/request-snapshot"
-import {
-  closeActiveStream,
-  openSseConnection,
-} from "@/lib/sse/sse-request"
+import { closeActiveStream, openSseConnection } from "@/lib/sse/sse-request"
 import { getRequestTabCloseResult } from "@/lib/request-tabs"
 import { normalizeRequestConfiguration } from "@/lib/request-model"
 import {
@@ -91,9 +88,7 @@ export const Route = createFileRoute("/")({
   component: App,
 })
 
-const defaultOperation =
-  apiOperations.find((operation) => operation.id === "POST /auth/login") ??
-  apiOperations[0]
+const defaultOperation = apiOperations[0]
 const DEFAULT_RESPONSE_PANEL_HEIGHT = 360
 const idleResponseState: ResponseState = { status: "idle" }
 
@@ -1103,7 +1098,8 @@ function RequestWorkspace({
 
       {request.mode === "sse" ? (
         <div className="mt-3 rounded-md border border-border bg-muted/35 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          Fetch-based Server-Sent Events (SSE) support custom methods, headers, and request bodies.
+          Fetch-based Server-Sent Events (SSE) support custom methods, headers,
+          and request bodies.
         </div>
       ) : null}
 
@@ -1114,11 +1110,7 @@ function RequestWorkspace({
       >
         <TabsList className="max-w-full justify-start overflow-x-auto rounded-md border border-border bg-muted/50 p-1">
           {requestTabs.map((tab) => (
-            <TabsTrigger
-              key={tab}
-              value={tab}
-              className="shrink-0 rounded-sm"
-            >
+            <TabsTrigger key={tab} value={tab} className="shrink-0 rounded-sm">
               <RequestTabLabel
                 tab={tab}
                 operation={request.operation}
@@ -1497,7 +1489,12 @@ function connectWebSocketRequest({
   }
   setRequestSnapshotByOperationId((snapshots) => ({
     ...snapshots,
-    [request.id]: createStreamSnapshot({ request, url: wsUrl, draft, environment }),
+    [request.id]: createStreamSnapshot({
+      request,
+      url: wsUrl,
+      draft,
+      environment,
+    }),
   }))
 
   socket.onopen = () => {

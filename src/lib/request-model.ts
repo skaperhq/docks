@@ -20,8 +20,7 @@ export function normalizeRequestConfiguration({
   return {
     transport,
     mode: normalizedMode,
-    method:
-      transport === "websocket" ? "GET" : method,
+    method: transport === "websocket" ? "GET" : method,
   }
 }
 
