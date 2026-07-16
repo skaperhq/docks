@@ -8,14 +8,17 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { FileIcon, FilesIcon, XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { KeyValueRow } from "./types"
 import {
@@ -144,9 +147,16 @@ function EditableKeyValueRow({
               onValueChange={(type) =>
                 onChange({
                   type,
-                  value: type === "file" ? (row.fileName ?? "") : row.value,
+                  value:
+                    type === "file"
+                      ? (row.fileNames ?? [row.fileName])
+                          .filter(Boolean)
+                          .join(", ")
+                      : row.value,
                   file: type === "file" ? row.file : undefined,
                   fileName: type === "file" ? row.fileName : undefined,
+                  files: type === "file" ? row.files : undefined,
+                  fileNames: type === "file" ? row.fileNames : undefined,
                 })
               }
             >
@@ -157,8 +167,10 @@ function EditableKeyValueRow({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">Text</SelectItem>
-                <SelectItem value="file">File</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="file">File</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           ) : null}
@@ -166,18 +178,10 @@ function EditableKeyValueRow({
       </TableCell>
       <TableCell className="h-8.5 border-r border-border px-0 py-0">
         {allowFileValues && row.type === "file" ? (
-          <Input
-            type="file"
-            aria-label={`Select file for ${row.key || "form-data row"}`}
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              onChange({
-                file,
-                fileName: file?.name ?? "",
-                value: file?.name ?? "",
-              })
-            }}
-            className={leanCellInputClassName}
+          <FileValueEditor
+            row={row}
+            onChange={onChange}
+            fieldName={row.key || "form-data row"}
           />
         ) : (
           <Input
@@ -205,5 +209,156 @@ function EditableKeyValueRow({
         />
       </TableCell>
     </TableRow>
+  )
+}
+
+function FileValueEditor({
+  row,
+  fieldName,
+  onChange,
+}: {
+  row: KeyValueRow
+  fieldName: string
+  onChange: (patch: Partial<KeyValueRow>) => void
+}) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const [isFocused, setIsFocused] = React.useState(false)
+  const fileNames = row.files?.length
+    ? row.files.map((file) => file.name)
+    : row.fileNames?.length
+      ? row.fileNames
+      : row.fileName
+        ? [row.fileName]
+        : []
+
+  function openFilePicker() {
+    inputRef.current?.click()
+  }
+
+  function selectFiles(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? [])
+    const nextFileNames = files.map((file) => file.name)
+
+    onChange({
+      files,
+      fileNames: nextFileNames,
+      file: files[0],
+      fileName: nextFileNames[0],
+      value: nextFileNames.join(", "),
+    })
+
+    const activeElement = document.activeElement
+    if (
+      activeElement instanceof HTMLElement &&
+      containerRef.current?.contains(activeElement)
+    ) {
+      activeElement.blur()
+    }
+    setIsFocused(false)
+    event.currentTarget.value = ""
+  }
+
+  function removeFile(index: number) {
+    const nextFiles = row.files?.filter((_, fileIndex) => fileIndex !== index)
+    const nextFileNames = fileNames.filter(
+      (_, fileIndex) => fileIndex !== index
+    )
+
+    onChange({
+      files: nextFiles,
+      fileNames: nextFileNames,
+      file: nextFiles?.[0],
+      fileName: nextFileNames[0],
+      value: nextFileNames.join(", "),
+    })
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      role="group"
+      tabIndex={0}
+      aria-label={`Files for ${fieldName}`}
+      className="flex min-h-8.5 min-w-0 items-center rounded-md px-1 outline-none focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-inset"
+      onFocusCapture={() => setIsFocused(true)}
+      onBlurCapture={(event) => {
+        if (!containerRef.current?.contains(event.relatedTarget)) {
+          setIsFocused(false)
+        }
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.currentTarget === event.target &&
+          (event.key === "Enter" || event.key === " ")
+        ) {
+          event.preventDefault()
+          openFilePicker()
+        }
+      }}
+    >
+      <Input
+        ref={inputRef}
+        type="file"
+        multiple
+        tabIndex={-1}
+        aria-label={`File picker for ${fieldName}`}
+        onChange={selectFiles}
+        className="sr-only"
+      />
+
+      {fileNames.length === 0 ? (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={openFilePicker}
+          aria-label={`Select files for ${fieldName}`}
+          className="w-full justify-start"
+        >
+          <span className="text-muted-foreground">Select files</span>
+        </Button>
+      ) : !isFocused && fileNames.length > 1 ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          tabIndex={-1}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            containerRef.current?.focus()
+          }}
+          aria-label={`Expand ${fileNames.length} files for ${fieldName}`}
+        >
+          <FilesIcon data-icon="inline-start" />
+          {fileNames.length} files
+        </Button>
+      ) : (
+        <div
+          className="flex min-w-0 flex-1 cursor-text flex-col items-start gap-1 py-1"
+          onClick={(event) => {
+            if (event.currentTarget === event.target) {
+              openFilePicker()
+            }
+          }}
+        >
+          {fileNames.map((fileName, index) => (
+            <Button
+              key={`${fileName}-${index}`}
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => removeFile(index)}
+              aria-label={`Remove ${fileName}`}
+              title={`Remove ${fileName}`}
+              className="max-w-full"
+            >
+              <FileIcon data-icon="inline-start" />
+              <span className="truncate">{fileName}</span>
+              <XIcon data-icon="inline-end" />
+            </Button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

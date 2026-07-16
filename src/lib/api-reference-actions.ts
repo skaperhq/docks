@@ -58,6 +58,7 @@ type SerializableKeyValueRow = {
   maxLength?: number
   example?: any
   fileName?: string
+  fileNames?: string[]
 }
 
 type SerializableRequestDraft = {

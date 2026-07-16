@@ -266,7 +266,7 @@ export function AppSidebar({
               onValueChange={setActiveEnvironmentId}
             >
               <SelectTrigger
-                className="h-8 w-full text-[13px]"
+                className="h-8 w-full rounded-sm text-[13px]"
                 aria-label="Select active environment"
               >
                 <SelectValue />
@@ -291,7 +291,7 @@ export function AppSidebar({
               <SidebarInput
                 value={searchQuery}
                 onChange={(event) => onSearchQueryChange(event.target.value)}
-                className="h-8 rounded-md border-sidebar-border bg-sidebar-accent text-sidebar-foreground placeholder:text-muted-foreground"
+                className="h-8 rounded-sm border-sidebar-border bg-sidebar-accent text-sidebar-foreground placeholder:text-muted-foreground"
                 placeholder="Search requests"
                 aria-label="Search API requests"
               />
@@ -299,9 +299,9 @@ export function AppSidebar({
             <Button
               type="button"
               onClick={() => setRequestDialogOpen(true)}
-              className="w-full text-xs"
+              className="w-full rounded-sm text-sm font-normal"
             >
-              <PlusIcon className="size-3.5" />
+              <PlusIcon className="size-3.5" strokeWidth={2} />
               Add request
             </Button>
           </SidebarGroupContent>

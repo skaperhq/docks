@@ -1,4 +1,15 @@
-export type RequestTab = "Docs" | "Params" | "Headers" | "Body"
+export type RequestTab = "Docs" | "Message" | "Params" | "Headers" | "Body"
+
+export type WebSocketConnectionStatus =
+  "disconnected" | "connecting" | "connected"
+
+export type WebSocketFrame = {
+  id: string
+  direction: "incoming" | "outgoing"
+  data: string
+  sizeBytes: number
+  timestamp: number
+}
 
 export type KeyValueRow = {
   key: string
@@ -18,6 +29,8 @@ export type KeyValueRow = {
   example?: any
   fileName?: string
   file?: Blob
+  fileNames?: string[]
+  files?: File[]
 }
 
 export type RequestBodyDraft = {
@@ -54,6 +67,7 @@ export type ResponseResult = {
   headers: ResponseHeader[]
   cookies: ResponseHeader[]
   url: string
+  websocketFrames?: WebSocketFrame[]
 }
 
 export type SavedRequestSnapshot = {

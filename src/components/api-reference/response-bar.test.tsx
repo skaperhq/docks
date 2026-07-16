@@ -76,6 +76,36 @@ describe("ResponseBar", () => {
       '{\n  "ok": true\n}'
     )
   })
+
+  test("shows WebSocket frames as messages instead of a response body", () => {
+    renderResponse({
+      transport: "websocket",
+      response: {
+        status: "success",
+        result: {
+          ...successResponse.result,
+          status: 101,
+          statusText: "Connected",
+          websocketFrames: [
+            {
+              id: "frame-1",
+              direction: "incoming",
+              data: '{"type":"notification.connected"}',
+              sizeBytes: 33,
+              timestamp: Date.UTC(2026, 6, 16, 0, 29, 26, 418),
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByRole("tab", { name: "Messages (1)" })).toBeTruthy()
+    expect(screen.queryByRole("tab", { name: "Body" })).toBeNull()
+    expect(screen.getByText('{"type":"notification.connected"}')).toBeTruthy()
+    expect(screen.getByTestId("body-editor").textContent).toContain(
+      '"type": "notification.connected"'
+    )
+  })
 })
 
 function renderResponse(

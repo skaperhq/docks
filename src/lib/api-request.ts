@@ -137,13 +137,23 @@ function buildRequestBody({
     for (const row of body.formDataRows ?? []) {
       if (row.enabled === false || !row.key.trim()) continue
       if (row.type === "file") {
-        if (row.file) {
+        const files = row.files?.length ? row.files : row.file ? [row.file] : []
+        const fileNames = row.fileNames?.length
+          ? row.fileNames
+          : row.fileName
+            ? [row.fileName]
+            : []
+
+        files.forEach((file, index) => {
           formData.append(
             row.key.trim(),
-            row.file,
-            row.fileName || "upload.bin"
+            file,
+            fileNames[index] ||
+              ("name" in file && typeof file.name === "string"
+                ? file.name
+                : "upload.bin")
           )
-        }
+        })
         continue
       }
       formData.append(row.key.trim(), resolveVariables(row.value))
@@ -232,11 +242,18 @@ function resolveRow(
   row: KeyValueRow,
   resolveVariables: (text: string) => string
 ): KeyValueRow {
-  const { file: _file, ...serializableRow } = row
+  const { file: _file, files: _files, ...serializableRow } = row
+  const fileNames =
+    row.fileNames ??
+    row.files?.map((file) => file.name) ??
+    (row.fileName ? [row.fileName] : undefined)
+
   return {
     ...serializableRow,
     key: resolveVariables(row.key),
     value: resolveVariables(row.value),
     description: row.description,
+    fileName: fileNames?.[0],
+    fileNames,
   }
 }

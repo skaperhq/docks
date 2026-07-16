@@ -328,6 +328,7 @@ function normalizeRequestTab(value: string): RequestTab {
 
   if (
     value === "Docs" ||
+    value === "Message" ||
     value === "Params" ||
     value === "Headers" ||
     value === "Body"

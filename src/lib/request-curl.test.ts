@@ -73,6 +73,31 @@ describe("buildCurlCommand", () => {
     expect(encoded).toContain("--data-urlencode 'q=api docs'")
   })
 
+  test("serializes every file selected for one form-data key", () => {
+    const command = buildCurlCommand(
+      createSnapshot({
+        method: "POST",
+        body: {
+          mode: "form-data",
+          contentType: "multipart/form-data",
+          value: "",
+          formDataRows: [
+            {
+              key: "documents",
+              value: "one.txt, two.pdf",
+              description: "",
+              type: "file",
+              fileNames: ["one.txt", "two.pdf"],
+            },
+          ],
+        },
+      })
+    )
+
+    expect(command).toContain("--form 'documents=@one.txt'")
+    expect(command).toContain("--form 'documents=@two.pdf'")
+  })
+
   test("shows full headers and body for fetch-based SSE requests", () => {
     const command = buildCurlCommand(
       createSnapshot({

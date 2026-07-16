@@ -182,6 +182,43 @@ describe("buildFetchRequest", () => {
     )
   })
 
+  test("sends multiple files under the same form-data key", () => {
+    const firstFile = new File(["first"], "front.png", { type: "image/png" })
+    const secondFile = new File(["second"], "back.png", { type: "image/png" })
+    const request = buildFetchRequest({
+      baseUrl: "https://api.example.com/upload",
+      method: "POST",
+      draft: createDraft({
+        body: {
+          mode: "form-data",
+          contentType: "multipart/form-data",
+          value: "",
+          formDataRows: [
+            {
+              key: "photos",
+              value: "front.png, back.png",
+              description: "",
+              type: "file",
+              files: [firstFile, secondFile],
+              fileNames: ["front.png", "back.png"],
+            },
+          ],
+        },
+      }),
+      resolveVariables,
+      environment: null,
+    })
+
+    expect((request.body as FormData).getAll("photos")).toHaveLength(2)
+    expect(
+      request.requestSnapshot.body.formDataRows?.[0]?.files
+    ).toBeUndefined()
+    expect(request.requestSnapshot.body.formDataRows?.[0]?.fileNames).toEqual([
+      "front.png",
+      "back.png",
+    ])
+  })
+
   test("serializes GraphQL query and variables as JSON", () => {
     const request = buildFetchRequest({
       baseUrl: "https://api.example.com/graphql",

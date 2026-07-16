@@ -1,4 +1,6 @@
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   BracesIcon,
   CopyIcon,
   SaveIcon,
@@ -7,6 +9,7 @@ import {
 } from "lucide-react"
 import * as React from "react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogClose,
@@ -21,11 +24,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BodyEditor } from "./body-editor"
 import type { BodyEditorHandle } from "./body-editor"
-import type { ResponseHeader, ResponseState } from "./types"
+import type { ResponseHeader, ResponseState, WebSocketFrame } from "./types"
 import { prettyPrintJson } from "./utils"
 
 export function ResponseBar({
   response,
+  transport = "http",
   height,
   onHeightChange,
   onHeightCommit,
@@ -36,6 +40,7 @@ export function ResponseBar({
   curlCommand = "",
 }: {
   response: ResponseState
+  transport?: "http" | "websocket"
   height: number
   onHeightChange: (height: number) => void
   onHeightCommit: (height: number) => void
@@ -45,12 +50,16 @@ export function ResponseBar({
   showSave?: boolean
   curlCommand?: string
 }) {
+  const isWebSocket = transport === "websocket"
   const result = response.status === "success" ? response.result : undefined
   const isLoading = response.status === "loading"
   const error = response.status === "error" ? response.error : undefined
   const [saveDialogOpen, setSaveDialogOpen] = React.useState(false)
   const [saveName, setSaveName] = React.useState(saveDefaultName)
   const [lineWrapping, setLineWrapping] = React.useState(false)
+  const [activeResponseTab, setActiveResponseTab] = React.useState(
+    isWebSocket ? "Messages" : "Body"
+  )
   const [toastMessage, setToastMessage] = React.useState("")
   const bodyEditorRef = React.useRef<BodyEditorHandle>(null)
   const toastTimerRef = React.useRef<number | null>(null)
@@ -71,6 +80,10 @@ export function ResponseBar({
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
     }
   }, [])
+
+  React.useEffect(() => {
+    setActiveResponseTab(isWebSocket ? "Messages" : "Body")
+  }, [isWebSocket])
 
   const showToast = React.useCallback((message: string) => {
     setToastMessage(message)
@@ -111,9 +124,10 @@ export function ResponseBar({
 
   return (
     <Tabs
-      defaultValue="Body"
+      value={activeResponseTab}
+      onValueChange={setActiveResponseTab}
       style={{ height }}
-      className="relative shrink-0 gap-0 overflow-hidden rounded-t-lg border border-b-0 border-border bg-background text-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.08)]"
+      className="relative shrink-0 gap-0 overflow-hidden rounded-t-lg border border-b-0 border-border bg-background text-foreground"
     >
       <div
         role="separator"
@@ -125,18 +139,23 @@ export function ResponseBar({
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
         <div className="min-w-0 overflow-x-auto">
           <TabsList variant="default" className="shrink-0 rounded-md">
-            <TabsTrigger value="Body" className="">
-              Body
-            </TabsTrigger>
-            <TabsTrigger value="Cookies">Cookies</TabsTrigger>
-            <TabsTrigger value="Headers">
-              Headers{" "}
-              {result ? (
-                <span className="text-emerald-500">
-                  ({result.headers.length})
-                </span>
-              ) : null}
-            </TabsTrigger>
+            {isWebSocket ? (
+              <TabsTrigger value="Messages">
+                Messages{" "}
+                {result?.websocketFrames?.length ? (
+                  <span>({result.websocketFrames.length})</span>
+                ) : null}
+              </TabsTrigger>
+            ) : (
+              <>
+                <TabsTrigger value="Body">Body</TabsTrigger>
+                <TabsTrigger value="Cookies">Cookies</TabsTrigger>
+                <TabsTrigger value="Headers">
+                  Headers{" "}
+                  {result ? <span>({result.headers.length})</span> : null}
+                </TabsTrigger>
+              </>
+            )}
             {curlCommand ? (
               <TabsTrigger value="Request">Request</TabsTrigger>
             ) : null}
@@ -158,8 +177,8 @@ export function ResponseBar({
             </Button>
           ) : null}
           {isLoading ? (
-            <span className="rounded-md bg-blue-500/10 px-3 py-1 font-normal text-blue-500">
-              Sending...
+            <span className="rounded-md bg-muted px-3 py-1 font-normal text-muted-foreground">
+              {isWebSocket ? "Connecting..." : "Sending..."}
             </span>
           ) : result ? (
             <>
@@ -189,39 +208,52 @@ export function ResponseBar({
       </div>
 
       <div className="min-h-0 flex-1">
-        <TabsContent value="Body" className="m-0 flex h-full flex-col">
-          <ResponseBodyToolbar
-            contentType={result?.contentType}
-            bodyText={bodyText}
-            lineWrapping={lineWrapping}
-            onLineWrappingChange={setLineWrapping}
-            onSearch={() => bodyEditorRef.current?.openSearch()}
-            onCopy={() => copyText(bodyText, "Response copied")}
-          />
-          <ResponseCodeView
-            text={
-              bodyText ||
-              (isLoading
-                ? '{\n  "status": "sending"\n}'
-                : '{\n  "status": "idle"\n}')
-            }
-            contentType={result?.contentType}
-            lineWrapping={lineWrapping}
-            ref={bodyEditorRef}
-          />
-        </TabsContent>
-        <TabsContent value="Cookies" className="m-0 h-full">
-          <HeaderList
-            emptyMessage="No cookies were exposed by this response."
-            headers={result?.cookies ?? []}
-          />
-        </TabsContent>
-        <TabsContent value="Headers" className="m-0 h-full">
-          <HeaderList
-            emptyMessage="Send a request to inspect response headers."
-            headers={result?.headers ?? []}
-          />
-        </TabsContent>
+        {isWebSocket ? (
+          <TabsContent value="Messages" className="m-0 h-full">
+            <WebSocketMessagesView
+              frames={result?.websocketFrames ?? []}
+              isConnecting={isLoading}
+            />
+          </TabsContent>
+        ) : (
+          <TabsContent value="Body" className="m-0 flex h-full flex-col">
+            <ResponseBodyToolbar
+              contentType={result?.contentType}
+              bodyText={bodyText}
+              lineWrapping={lineWrapping}
+              onLineWrappingChange={setLineWrapping}
+              onSearch={() => bodyEditorRef.current?.openSearch()}
+              onCopy={() => copyText(bodyText, "Response copied")}
+            />
+            <ResponseCodeView
+              text={
+                bodyText ||
+                (isLoading
+                  ? '{\n  "status": "sending"\n}'
+                  : '{\n  "status": "idle"\n}')
+              }
+              contentType={result?.contentType}
+              lineWrapping={lineWrapping}
+              ref={bodyEditorRef}
+            />
+          </TabsContent>
+        )}
+        {!isWebSocket ? (
+          <>
+            <TabsContent value="Cookies" className="m-0 h-full">
+              <HeaderList
+                emptyMessage="No cookies were exposed by this response."
+                headers={result?.cookies ?? []}
+              />
+            </TabsContent>
+            <TabsContent value="Headers" className="m-0 h-full">
+              <HeaderList
+                emptyMessage="Send a request to inspect response headers."
+                headers={result?.headers ?? []}
+              />
+            </TabsContent>
+          </>
+        ) : null}
         {curlCommand ? (
           <TabsContent value="Request" className="m-0 flex h-full flex-col">
             <div className="flex h-11 shrink-0 items-center justify-between px-7 text-sm text-muted-foreground">
@@ -249,7 +281,7 @@ export function ResponseBar({
       {toastMessage ? (
         <div
           role="status"
-          className="absolute right-4 bottom-4 z-50 rounded-md border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
+          className="absolute right-4 bottom-4 z-50 rounded-md border border-border bg-popover px-3 py-2 text-sm text-popover-foreground"
         >
           {toastMessage}
         </div>
@@ -296,6 +328,143 @@ export function ResponseBar({
       </Dialog>
     </Tabs>
   )
+}
+
+function WebSocketMessagesView({
+  frames,
+  isConnecting,
+}: {
+  frames: WebSocketFrame[]
+  isConnecting: boolean
+}) {
+  const [filter, setFilter] = React.useState("")
+  const [selectedFrameId, setSelectedFrameId] = React.useState<string | null>(
+    null
+  )
+  const normalizedFilter = filter.trim().toLowerCase()
+  const filteredFrames = normalizedFilter
+    ? frames.filter((frame) =>
+        frame.data.toLowerCase().includes(normalizedFilter)
+      )
+    : frames
+  const selectedFrame =
+    frames.find((frame) => frame.id === selectedFrameId) ?? frames[0]
+
+  React.useEffect(() => {
+    if (!selectedFrameId && frames[0]) {
+      setSelectedFrameId(frames[0].id)
+    }
+  }, [frames, selectedFrameId])
+
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[minmax(9rem,45%)_minmax(0,1fr)]">
+      <div className="flex min-h-0 flex-col border-b border-border">
+        <div className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3">
+          <Input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter messages"
+            aria-label="Filter WebSocket messages"
+            className="h-7 max-w-sm border-0 bg-muted/60 shadow-none focus-visible:ring-1"
+          />
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_6rem_8rem] border-b border-border bg-muted/35 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+          <span>Data</span>
+          <span className="text-right">Length</span>
+          <span className="text-right">Time</span>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          {filteredFrames.length > 0 ? (
+            <div className="flex flex-col">
+              {filteredFrames.map((frame) => {
+                const isSelected = frame.id === selectedFrame?.id
+
+                return (
+                  <button
+                    key={frame.id}
+                    type="button"
+                    onClick={() => setSelectedFrameId(frame.id)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "grid grid-cols-[minmax(0,1fr)_6rem_8rem] items-center border-b border-border px-3 py-1.5 text-left font-mono text-xs hover:bg-muted/50",
+                      isSelected && "bg-muted"
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      {frame.direction === "incoming" ? (
+                        <ArrowDownIcon
+                          className="size-3.5 shrink-0 text-destructive"
+                          aria-label="Received"
+                        />
+                      ) : (
+                        <ArrowUpIcon
+                          className="size-3.5 shrink-0 text-primary"
+                          aria-label="Sent"
+                        />
+                      )}
+                      <span className="truncate">{frame.data}</span>
+                    </span>
+                    <span className="text-right tabular-nums">
+                      {frame.sizeBytes}
+                    </span>
+                    <span className="text-right text-muted-foreground tabular-nums">
+                      {formatFrameTime(frame.timestamp)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="flex h-full min-h-20 items-center justify-center px-4 text-sm text-muted-foreground">
+              {normalizedFilter
+                ? "No messages match this filter."
+                : isConnecting
+                  ? "Connecting to the WebSocket…"
+                  : "No WebSocket messages yet."}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+      <div className="min-h-0">
+        {selectedFrame ? (
+          <BodyEditor
+            value={formatWebSocketFrameData(selectedFrame.data)}
+            contentType={
+              isJsonText(selectedFrame.data) ? "application/json" : "text/plain"
+            }
+            readOnly
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Select a message to inspect its payload.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatFrameTime(timestamp: number) {
+  const date = new Date(timestamp)
+  return `${date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })}.${String(date.getMilliseconds()).padStart(3, "0")}`
+}
+
+function isJsonText(value: string) {
+  try {
+    JSON.parse(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function formatWebSocketFrameData(value: string) {
+  return isJsonText(value) ? JSON.stringify(JSON.parse(value), null, 2) : value
 }
 
 function ResponseBodyToolbar({

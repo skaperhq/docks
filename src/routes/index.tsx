@@ -46,6 +46,7 @@ import {
   RequestTabContent,
   RequestTabLabel,
   requestTabs,
+  websocketRequestTabs,
 } from "@/components/api-reference/request-tab-content"
 import { ResponseBar } from "@/components/api-reference/response-bar"
 import type {
@@ -55,6 +56,8 @@ import type {
   ResponseState,
   SavedRequestSnapshot,
   SavedResponseSummary,
+  WebSocketConnectionStatus,
+  WebSocketFrame,
 } from "@/components/api-reference/types"
 import { buildFetchRequest } from "@/lib/api-request"
 import { buildCurlCommand } from "@/lib/request-curl"
@@ -84,10 +87,13 @@ import {
   getHeaderRows,
   getMethodClassName,
   getBgMethodClassName,
-  formatBodyExample,
   parameterToRow,
   restoreGeneratedHeaderTemplates,
 } from "@/components/api-reference/utils"
+import {
+  createOperationRequestBodyDraft,
+  normalizeOperationRequestDraft,
+} from "@/lib/request-body"
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -102,10 +108,19 @@ export const Route = createFileRoute("/")({
 const defaultOperation = apiOperations[0]
 const DEFAULT_RESPONSE_PANEL_HEIGHT = 360
 const idleResponseState: ResponseState = { status: "idle" }
+const disconnectedWebSocketState: WebSocketConnectionStatus = "disconnected"
 
 type RequestDraftMap = Partial<Record<string, RequestDraft>>
 type RequestTabMap = Partial<Record<string, RequestTab>>
 type ResponseStateMap = Partial<Record<string, ResponseState>>
+type WebSocketConnectionStateMap = Partial<
+  Record<string, WebSocketConnectionStatus>
+>
+type ActiveStream = {
+  id: string
+  close: () => void
+  send?: (message: string) => boolean
+}
 type WorkspaceRequest = {
   id: string
   method: string
@@ -173,12 +188,13 @@ export function WorkspacePage({
   const [isSavingResponse, setIsSavingResponse] = React.useState(false)
   const [responseStateByOperationId, setResponseStateByOperationId] =
     React.useState<ResponseStateMap>({})
+  const [
+    webSocketConnectionStateByOperationId,
+    setWebSocketConnectionStateByOperationId,
+  ] = React.useState<WebSocketConnectionStateMap>({})
   const [requestSnapshotByOperationId, setRequestSnapshotByOperationId] =
     React.useState<Partial<Record<string, SavedRequestSnapshot>>>({})
-  const activeStreamRef = React.useRef<{
-    id: string
-    close: () => void
-  } | null>(null)
+  const activeStreamRef = React.useRef<ActiveStream | null>(null)
   const selectedOperation = operationId
     ? apiOperations.find((operation) => operation.id === operationId)
     : undefined
@@ -247,15 +263,7 @@ export function WorkspacePage({
   )
 
   const defaultBody = React.useMemo<RequestBodyDraft>(
-    () => ({
-      mode: "raw",
-      contentType:
-        selectedRequest?.operation?.requestContentTypes[0] ??
-        "application/json",
-      value: formatBodyExample(selectedRequest?.operation?.requestExample),
-      formDataRows: [],
-      urlEncodedRows: [],
-    }),
+    () => createOperationRequestBodyDraft(selectedRequest?.operation),
     [selectedRequest?.operation]
   )
   const defaultRequestDraft = React.useMemo<RequestDraft>(
@@ -277,6 +285,10 @@ export function WorkspacePage({
   const responseState = selectedRequest
     ? (responseStateByOperationId[selectedRequest.id] ?? idleResponseState)
     : idleResponseState
+  const websocketConnectionStatus = selectedRequest
+    ? (webSocketConnectionStateByOperationId[selectedRequest.id] ??
+      disconnectedWebSocketState)
+    : disconnectedWebSocketState
   const requestPreviewSnapshot = React.useMemo(() => {
     if (!selectedRequest) {
       return undefined
@@ -367,13 +379,22 @@ export function WorkspacePage({
         )
         setRequestDrafts(
           Object.fromEntries(
-            validRequestTabs.map((tab) => [
-              tab.operationId,
-              {
-                ...tab.draft,
-                headers: restoreGeneratedHeaderTemplates(tab.draft.headers),
-              },
-            ])
+            validRequestTabs.map((tab) => {
+              const operation = apiOperations.find(
+                (item) => item.id === tab.operationId
+              )
+              const draft = operation
+                ? normalizeOperationRequestDraft(operation, tab.draft)
+                : tab.draft
+
+              return [
+                tab.operationId,
+                {
+                  ...draft,
+                  headers: restoreGeneratedHeaderTemplates(draft.headers),
+                },
+              ]
+            })
           )
         )
         setRequestTabByOperation(
@@ -565,6 +586,10 @@ export function WorkspacePage({
     ) {
       activeStreamRef.current.close()
       activeStreamRef.current = null
+      setWebSocketConnectionStateByOperationId((states) => ({
+        ...states,
+        [getCustomRequestKey(request.id)]: "disconnected",
+      }))
     }
 
     setCustomRequests((requests) =>
@@ -623,6 +648,11 @@ export function WorkspacePage({
       return nextTabs
     })
     setResponseStateByOperationId((states) => {
+      const nextStates = { ...states }
+      delete nextStates[closedOperationId]
+      return nextStates
+    })
+    setWebSocketConnectionStateByOperationId((states) => {
       const nextStates = { ...states }
       delete nextStates[closedOperationId]
       return nextStates
@@ -789,8 +819,15 @@ export function WorkspacePage({
       return
     }
 
+    const previousStreamId = activeStreamRef.current?.id
     activeStreamRef.current?.close()
     activeStreamRef.current = null
+    if (previousStreamId) {
+      setWebSocketConnectionStateByOperationId((states) => ({
+        ...states,
+        [previousStreamId]: "disconnected",
+      }))
+    }
     setResponseStateByOperationId((states) => ({
       ...states,
       [selectedRequest.id]: { status: "loading", startedAt },
@@ -799,6 +836,10 @@ export function WorkspacePage({
 
     try {
       if (selectedRequest.transport === "websocket") {
+        setWebSocketConnectionStateByOperationId((states) => ({
+          ...states,
+          [selectedRequest.id]: "connecting",
+        }))
         const wsRequest = buildFetchRequest({
           baseUrl: fullRequestUrl,
           method: selectedRequest.method,
@@ -820,6 +861,7 @@ export function WorkspacePage({
           startedAt,
           setRequestSnapshotByOperationId,
           setResponseStateByOperationId,
+          setWebSocketConnectionStateByOperationId,
           activeStreamRef,
           environment: activeEnvironment
             ? {
@@ -912,6 +954,12 @@ export function WorkspacePage({
         },
       }))
     } catch (error) {
+      if (selectedRequest.transport === "websocket") {
+        setWebSocketConnectionStateByOperationId((states) => ({
+          ...states,
+          [selectedRequest.id]: "disconnected",
+        }))
+      }
       setResponseStateByOperationId((states) => ({
         ...states,
         [selectedRequest.id]: {
@@ -920,6 +968,37 @@ export function WorkspacePage({
           durationMs: Math.round(performance.now() - startedAt),
         },
       }))
+    }
+  }
+
+  function handleDisconnectWebSocket() {
+    if (
+      !selectedRequest ||
+      selectedRequest.transport !== "websocket" ||
+      activeStreamRef.current?.id !== selectedRequest.id
+    ) {
+      return
+    }
+
+    setWebSocketConnectionStateByOperationId((states) => ({
+      ...states,
+      [selectedRequest.id]: "disconnected",
+    }))
+    activeStreamRef.current.close()
+  }
+
+  function handleSendWebSocketMessage() {
+    if (
+      !selectedRequest ||
+      selectedRequest.transport !== "websocket" ||
+      activeStreamRef.current?.id !== selectedRequest.id
+    ) {
+      return
+    }
+
+    const message = resolveVariables(requestDraft.body.value)
+    if (!message || !activeStreamRef.current.send?.(message)) {
+      return
     }
   }
 
@@ -970,7 +1049,10 @@ export function WorkspacePage({
                 requestDraft={requestDraft}
                 activeRequestTab={activeRequestTab}
                 responseState={responseState}
+                websocketConnectionStatus={websocketConnectionStatus}
                 onSend={handleSend}
+                onDisconnectWebSocket={handleDisconnectWebSocket}
+                onSendWebSocketMessage={handleSendWebSocketMessage}
                 onRequestTabChange={handleRequestTabChange}
                 onUpdateDraft={updateCurrentDraft}
                 onUpdateCustomRequest={handleUpdateCustomRequest}
@@ -988,6 +1070,7 @@ export function WorkspacePage({
         {hasResponsePanel && selectedRequest ? (
           <ResponseBar
             response={responseState}
+            transport={selectedRequest.transport}
             height={responsePanelHeight}
             onHeightChange={(height) =>
               setResponsePanelHeight(clampResponsePanelHeight(height))
@@ -1020,7 +1103,10 @@ function RequestWorkspace({
   requestDraft,
   activeRequestTab,
   responseState,
+  websocketConnectionStatus,
   onSend,
+  onDisconnectWebSocket,
+  onSendWebSocketMessage,
   onRequestTabChange,
   onUpdateDraft,
   onUpdateCustomRequest,
@@ -1031,7 +1117,10 @@ function RequestWorkspace({
   requestDraft: RequestDraft
   activeRequestTab: RequestTab
   responseState: ResponseState
+  websocketConnectionStatus: WebSocketConnectionStatus
   onSend: () => void
+  onDisconnectWebSocket: () => void
+  onSendWebSocketMessage: () => void
   onRequestTabChange: (tab: RequestTab) => void
   onUpdateDraft: (updater: (draft: RequestDraft) => RequestDraft) => void
   onUpdateCustomRequest: (
@@ -1045,7 +1134,22 @@ function RequestWorkspace({
   ) => void
   curlCommand?: string
 }) {
-  const visibleRequestTab = activeRequestTab
+  const isWebSocket = request.transport === "websocket"
+  const visibleRequestTabs = isWebSocket ? websocketRequestTabs : requestTabs
+  const visibleRequestTab = isWebSocket
+    ? activeRequestTab === "Body" ||
+      !visibleRequestTabs.includes(activeRequestTab)
+      ? "Message"
+      : activeRequestTab
+    : activeRequestTab === "Message" ||
+        !visibleRequestTabs.includes(activeRequestTab)
+      ? "Body"
+      : activeRequestTab
+  const isWebSocketConnecting =
+    isWebSocket && websocketConnectionStatus === "connecting"
+  const isWebSocketConnected =
+    isWebSocket && websocketConnectionStatus === "connected"
+  const isRequestLoading = !isWebSocket && responseState.status === "loading"
 
   return (
     <>
@@ -1097,16 +1201,32 @@ function RequestWorkspace({
           <Button
             type="button"
             className="h-10 rounded-sm bg-primary text-sm font-normal"
-            onClick={onSend}
-            disabled={responseState.status === "loading"}
+            onClick={isWebSocketConnected ? onDisconnectWebSocket : onSend}
+            disabled={isWebSocketConnecting || isRequestLoading}
+            aria-label={
+              isWebSocketConnected ? "Disconnect WebSocket" : undefined
+            }
           >
-            {responseState.status === "loading"
-              ? request.transport === "websocket" || request.mode === "sse"
-                ? "Connecting..."
-                : "Sending..."
-              : request.transport === "websocket" || request.mode === "sse"
-                ? "Connect"
-                : "Send"}
+            {isWebSocketConnected ? (
+              <>
+                <span className="group-hover/button:hidden">Connected</span>
+                <span className="hidden group-hover/button:inline">
+                  Disconnect
+                </span>
+              </>
+            ) : isWebSocketConnecting ? (
+              "Connecting..."
+            ) : responseState.status === "loading" ? (
+              request.mode === "sse" ? (
+                "Connecting..."
+              ) : (
+                "Sending..."
+              )
+            ) : isWebSocket || request.mode === "sse" ? (
+              "Connect"
+            ) : (
+              "Send"
+            )}
           </Button>
         </div>
       </div>
@@ -1124,17 +1244,18 @@ function RequestWorkspace({
         className="mt-4 flex w-full flex-col"
       >
         <TabsList className="max-w-full justify-start overflow-x-auto rounded-md border border-border bg-muted/50 p-1">
-          {requestTabs.map((tab) => (
+          {visibleRequestTabs.map((tab) => (
             <TabsTrigger key={tab} value={tab} className="shrink-0 rounded-sm">
               <RequestTabLabel
                 tab={tab}
                 operation={request.operation}
                 headers={requestDraft.headers}
+                websocketConnectionStatus={websocketConnectionStatus}
               />
             </TabsTrigger>
           ))}
         </TabsList>
-        {requestTabs.map((tab) => (
+        {visibleRequestTabs.map((tab) => (
           <TabsContent key={tab} value={tab} className="mt-1">
             <RequestTabContent
               activeTab={tab}
@@ -1152,6 +1273,8 @@ function RequestWorkspace({
               onBodyChange={(body) =>
                 onUpdateDraft((draft) => ({ ...draft, body }))
               }
+              websocketConnectionStatus={websocketConnectionStatus}
+              onSendWebSocketMessage={onSendWebSocketMessage}
               curlCommand={curlCommand}
             />
           </TabsContent>
@@ -1639,12 +1762,14 @@ function createStreamResult({
   url,
   startedAt,
   bodyText,
+  websocketFrames,
 }: {
   status: number
   statusText: string
   url: string
   startedAt: number
   bodyText: string
+  websocketFrames?: WebSocketFrame[]
 }) {
   return {
     status,
@@ -1657,6 +1782,7 @@ function createStreamResult({
     headers: [],
     cookies: [],
     url,
+    websocketFrames,
   }
 }
 
@@ -1667,6 +1793,7 @@ function connectWebSocketRequest({
   startedAt,
   setRequestSnapshotByOperationId,
   setResponseStateByOperationId,
+  setWebSocketConnectionStateByOperationId,
   activeStreamRef,
   environment,
 }: {
@@ -1680,17 +1807,70 @@ function connectWebSocketRequest({
   setResponseStateByOperationId: React.Dispatch<
     React.SetStateAction<ResponseStateMap>
   >
-  activeStreamRef: { current: { id: string; close: () => void } | null }
+  setWebSocketConnectionStateByOperationId: React.Dispatch<
+    React.SetStateAction<WebSocketConnectionStateMap>
+  >
+  activeStreamRef: { current: ActiveStream | null }
   environment: SavedRequestSnapshot["environment"]
 }) {
   const wsUrl = url.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")
   const socket = new WebSocket(wsUrl)
+  socket.binaryType = "arraybuffer"
   let bodyText = "[connecting] WebSocket connection started\n"
+  let frames: WebSocketFrame[] = []
+  let frameSequence = 0
 
-  activeStreamRef.current = {
+  const publishResult = (status: number, statusText: string) => {
+    setResponseStateByOperationId((states) => ({
+      ...states,
+      [request.id]: {
+        status: "success",
+        result: createStreamResult({
+          status,
+          statusText,
+          url: wsUrl,
+          startedAt,
+          bodyText,
+          websocketFrames: frames,
+        }),
+      },
+    }))
+  }
+
+  const appendFrame = (
+    direction: WebSocketFrame["direction"],
+    data: string
+  ) => {
+    const timestamp = Date.now()
+    frameSequence += 1
+    frames = [
+      ...frames,
+      {
+        id: `${timestamp}-${frameSequence}`,
+        direction,
+        data,
+        sizeBytes: new TextEncoder().encode(data).byteLength,
+        timestamp,
+      },
+    ]
+  }
+
+  const stream: ActiveStream = {
     id: request.id,
     close: () => socket.close(),
+    send: (message) => {
+      if (socket.readyState !== WebSocket.OPEN) {
+        return false
+      }
+
+      socket.send(message)
+      bodyText += `[sent] ${message}\n`
+      appendFrame("outgoing", message)
+      publishResult(101, "Connected")
+      return true
+    },
   }
+  activeStreamRef.current = stream
   setRequestSnapshotByOperationId((snapshots) => ({
     ...snapshots,
     [request.id]: createStreamSnapshot({
@@ -1702,40 +1882,39 @@ function connectWebSocketRequest({
   }))
 
   socket.onopen = () => {
+    if (activeStreamRef.current !== stream) {
+      socket.close()
+      return
+    }
+
     bodyText += "[open] Connected\n"
-    setResponseStateByOperationId((states) => ({
+    setWebSocketConnectionStateByOperationId((states) => ({
       ...states,
-      [request.id]: {
-        status: "success",
-        result: createStreamResult({
-          status: 101,
-          statusText: "Switching Protocols",
-          url,
-          startedAt,
-          bodyText,
-        }),
-      },
+      [request.id]: "connected",
     }))
+    publishResult(101, "Connected")
   }
 
-  socket.onmessage = (event) => {
-    bodyText += `[message] ${String(event.data)}\n`
-    setResponseStateByOperationId((states) => ({
-      ...states,
-      [request.id]: {
-        status: "success",
-        result: createStreamResult({
-          status: 101,
-          statusText: "Streaming",
-          url,
-          startedAt,
-          bodyText,
-        }),
-      },
-    }))
+  socket.onmessage = async (event) => {
+    const message = await webSocketMessageToText(event.data)
+    if (activeStreamRef.current !== stream) {
+      return
+    }
+
+    bodyText += `[message] ${message}\n`
+    appendFrame("incoming", message)
+    publishResult(101, "Connected")
   }
 
   socket.onerror = () => {
+    if (activeStreamRef.current !== stream) {
+      return
+    }
+
+    setWebSocketConnectionStateByOperationId((states) => ({
+      ...states,
+      [request.id]: "disconnected",
+    }))
     setResponseStateByOperationId((states) => ({
       ...states,
       [request.id]: {
@@ -1747,21 +1926,37 @@ function connectWebSocketRequest({
   }
 
   socket.onclose = (event) => {
+    if (activeStreamRef.current !== stream) {
+      return
+    }
+
     bodyText += `[close] code=${event.code} reason=${event.reason || "none"}\n`
-    setResponseStateByOperationId((states) => ({
+    activeStreamRef.current = null
+    setWebSocketConnectionStateByOperationId((states) => ({
       ...states,
-      [request.id]: {
-        status: "success",
-        result: createStreamResult({
-          status: event.wasClean ? 200 : 499,
-          statusText: event.wasClean ? "Closed" : "Closed Unexpectedly",
-          url,
-          startedAt,
-          bodyText,
-        }),
-      },
+      [request.id]: "disconnected",
     }))
+    publishResult(
+      event.wasClean ? 200 : 499,
+      event.wasClean ? "Disconnected" : "Disconnected Unexpectedly"
+    )
   }
+}
+
+async function webSocketMessageToText(data: unknown) {
+  if (typeof data === "string") {
+    return data
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(data)
+  }
+
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    return data.text()
+  }
+
+  return String(data)
 }
 
 function connectSseRequest({

@@ -1,10 +1,22 @@
 import type { ApiOperation } from "@/lib/openapi"
-import type { RequestTab, KeyValueRow, RequestBodyDraft } from "./types"
+import type {
+  RequestTab,
+  KeyValueRow,
+  RequestBodyDraft,
+  WebSocketConnectionStatus,
+} from "./types"
 import { CurlExample, DocsPanel } from "./docs-panel"
 import { KeyValueTable } from "./key-value-table"
 import { BodyPanel } from "./body-panel"
+import { WebSocketMessagePanel } from "./websocket-message-panel"
 
 export const requestTabs: RequestTab[] = ["Docs", "Params", "Headers", "Body"]
+export const websocketRequestTabs: RequestTab[] = [
+  "Docs",
+  "Message",
+  "Params",
+  "Headers",
+]
 
 export function RequestTabContent({
   activeTab,
@@ -16,6 +28,8 @@ export function RequestTabContent({
   onHeadersChange,
   body,
   onBodyChange,
+  websocketConnectionStatus = "disconnected",
+  onSendWebSocketMessage,
   curlCommand,
 }: {
   activeTab: RequestTab
@@ -27,6 +41,8 @@ export function RequestTabContent({
   onHeadersChange: (rows: KeyValueRow[]) => void
   body: RequestBodyDraft
   onBodyChange: (body: RequestBodyDraft) => void
+  websocketConnectionStatus?: WebSocketConnectionStatus
+  onSendWebSocketMessage?: () => void
   curlCommand?: string
 }) {
   switch (activeTab) {
@@ -57,6 +73,15 @@ export function RequestTabContent({
           emptyMessage="This request does not define generated headers."
         />
       )
+    case "Message":
+      return (
+        <WebSocketMessagePanel
+          body={body}
+          connectionStatus={websocketConnectionStatus}
+          onBodyChange={onBodyChange}
+          onSend={onSendWebSocketMessage ?? (() => {})}
+        />
+      )
     case "Body":
       return (
         <BodyPanel
@@ -73,11 +98,20 @@ export function RequestTabLabel({
   tab,
   operation,
   headers,
+  websocketConnectionStatus,
 }: {
   tab: RequestTab
   operation?: ApiOperation
   headers: KeyValueRow[]
+  websocketConnectionStatus?: WebSocketConnectionStatus
 }) {
+  if (tab === "Message" && websocketConnectionStatus === "connected") {
+    return (
+      <span className="inline-flex items-center gap-2">
+        Message <span className="size-2 rounded-full bg-primary" />
+      </span>
+    )
+  }
   if (tab === "Headers" && headers.length > 0) {
     return (
       <span className="inline-flex items-center gap-2">
@@ -107,8 +141,7 @@ function CustomDocsPanel({ curlCommand }: { curlCommand?: string }) {
         </h2>
         <p>
           This request was created in the workspace and is not generated from
-          the OpenAPI document. Configure params, headers, and body manually
-          before testing it.
+          the OpenAPI document. Configure its request details before testing it.
         </p>
       </div>
       {curlCommand ? <CurlExample command={curlCommand} /> : null}

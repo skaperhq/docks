@@ -53,9 +53,17 @@ function appendBody(parts: string[], snapshot: SavedRequestSnapshot) {
 
   if (body.mode === "form-data") {
     for (const row of enabledRows(body.formDataRows ?? [])) {
-      const value =
-        row.type === "file" ? `@${row.fileName || row.value}` : row.value
-      parts.push(`--form ${shellQuote(`${row.key.trim()}=${value}`)}`)
+      if (row.type === "file") {
+        const fileNames = row.fileNames?.length
+          ? row.fileNames
+          : [row.fileName || row.value].filter(Boolean)
+
+        for (const fileName of fileNames) {
+          parts.push(`--form ${shellQuote(`${row.key.trim()}=@${fileName}`)}`)
+        }
+      } else {
+        parts.push(`--form ${shellQuote(`${row.key.trim()}=${row.value}`)}`)
+      }
     }
     return
   }
