@@ -4,14 +4,27 @@ import { useEnvironment } from "@/components/environment-provider"
 import {
   ArrowLeftRightIcon,
   ArrowRightIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
   LockIcon,
   ServerIcon,
   Settings2Icon,
+  ShieldCheckIcon,
   TagsIcon,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -32,10 +45,19 @@ import {
 } from "@/components/ui/select"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   apiInfo,
   apiOperations,
+  apiResources,
+  apiSecuritySchemes,
   apiServers,
   apiSpecVersion,
+  apiTags,
+  getOperationGroups,
 } from "@/lib/openapi"
 import { cn } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -49,6 +71,7 @@ import {
   websocketRequestTabs,
 } from "@/components/api-reference/request-tab-content"
 import { ResponseBar } from "@/components/api-reference/response-bar"
+import { CopyPageAction } from "@/components/api-reference/copy-page-action"
 import type {
   RequestTab,
   RequestBodyDraft,
@@ -61,6 +84,16 @@ import type {
 } from "@/components/api-reference/types"
 import { buildFetchRequest } from "@/lib/api-request"
 import { buildCurlCommand } from "@/lib/request-curl"
+import {
+  buildApiOverviewMarkdown,
+  buildRequestPageMarkdown,
+} from "@/lib/page-markdown"
+import {
+  createRelayWebSocket,
+  getRelayedResponseCookies,
+  getRelayedResponseUrl,
+  skaperFetch,
+} from "@/lib/relay"
 import { requestDraftFromSnapshot } from "@/lib/request-snapshot"
 import { closeActiveStream, openSseConnection } from "@/lib/sse/sse-request"
 import { getRequestTabCloseResult } from "@/lib/request-tabs"
@@ -107,6 +140,7 @@ export const Route = createFileRoute("/")({
 
 const defaultOperation = apiOperations[0]
 const DEFAULT_RESPONSE_PANEL_HEIGHT = 360
+const preserveTemplateVariables = (value: string) => value
 const idleResponseState: ResponseState = { status: "idle" }
 const disconnectedWebSocketState: WebSocketConnectionStatus = "disconnected"
 
@@ -165,7 +199,6 @@ export function WorkspacePage({
 }) {
   const { activeEnvironment, resolveVariables } = useEnvironment()
 
-  const [searchQuery, setSearchQuery] = React.useState("")
   const [openOperationIds, setOpenOperationIds] = React.useState<string[]>(
     () => [defaultOperation.id]
   )
@@ -346,6 +379,63 @@ export function WorkspacePage({
   const requestCurlCommand = requestPreviewSnapshot
     ? buildCurlCommand(requestPreviewSnapshot)
     : ""
+  const literalRequestPreviewSnapshot = React.useMemo(() => {
+    if (!selectedRequest) return undefined
+
+    const environment = activeEnvironment
+      ? {
+          id: activeEnvironment.id,
+          name: activeEnvironment.name,
+          baseUrl: activeEnvironment.baseUrl,
+        }
+      : null
+    const preview = buildFetchRequest({
+      baseUrl: fullRequestUrl,
+      method: selectedRequest.method,
+      draft: requestDraft,
+      resolveVariables: preserveTemplateVariables,
+      environment,
+    }).requestSnapshot
+
+    if (selectedRequest.transport === "websocket") {
+      preview.transport = "websocket"
+      preview.url = preview.url
+        .replace(/^http:/i, "ws:")
+        .replace(/^https:/i, "wss:")
+    } else if (selectedRequest.mode === "sse") {
+      preview.mode = "sse"
+    }
+
+    return preview
+  }, [activeEnvironment, fullRequestUrl, requestDraft, selectedRequest])
+  const literalCurlCommand = literalRequestPreviewSnapshot
+    ? buildCurlCommand(literalRequestPreviewSnapshot)
+    : ""
+  const requestPageMarkdown = React.useMemo(
+    () =>
+      selectedRequest
+        ? buildRequestPageMarkdown({
+            title: selectedRequest.summary,
+            method: selectedRequest.method,
+            displayPath: selectedRequest.displayPath,
+            transport: selectedRequest.transport,
+            mode: selectedRequest.mode,
+            requestUrl: literalRequestPreviewSnapshot?.url ?? fullRequestUrl,
+            draft: requestDraft,
+            curlCommand: literalCurlCommand,
+            operation: selectedRequest.operation,
+            responseState,
+          })
+        : "",
+    [
+      fullRequestUrl,
+      literalCurlCommand,
+      literalRequestPreviewSnapshot?.url,
+      requestDraft,
+      responseState,
+      selectedRequest,
+    ]
+  )
 
   React.useEffect(() => {
     let cancelled = false
@@ -857,6 +947,7 @@ export function WorkspacePage({
         connectWebSocketRequest({
           request: selectedRequest,
           url: wsRequest.url,
+          headers: wsRequest.headers,
           draft: requestDraft,
           startedAt,
           setRequestSnapshotByOperationId,
@@ -921,16 +1012,17 @@ export function WorkspacePage({
         ...snapshots,
         [selectedRequest.id]: request.requestSnapshot,
       }))
-      const response = await fetch(request.url, {
+      const response = await skaperFetch(request.url, {
         method: selectedRequest.method,
         headers: request.headers,
         body: request.body,
       })
       const buffer = await response.arrayBuffer()
       const bodyText = new TextDecoder().decode(buffer)
-      const headers = Array.from(response.headers.entries()).map(
-        ([key, value]) => ({ key, value })
-      )
+      const headers = Array.from(response.headers.entries())
+        .map(([key, value]) => ({ key, value }))
+        .filter((header) => !header.key.startsWith("x-skaper-relay-"))
+      const relayedCookies = getRelayedResponseCookies(response)
       const durationMs = Math.round(performance.now() - startedAt)
 
       setResponseStateByOperationId((states) => ({
@@ -946,10 +1038,13 @@ export function WorkspacePage({
             contentType: response.headers.get("content-type") ?? "",
             bodyText,
             headers,
-            cookies: headers.filter((header) =>
-              header.key.toLowerCase().includes("cookie")
-            ),
-            url: response.url,
+            cookies:
+              relayedCookies.length > 0
+                ? relayedCookies
+                : headers.filter((header) =>
+                    header.key.toLowerCase().includes("cookie")
+                  ),
+            url: getRelayedResponseUrl(response, request.url),
           },
         },
       }))
@@ -1008,13 +1103,11 @@ export function WorkspacePage({
         activePage="workspace"
         selectedOperationId={selectedOperation?.id ?? null}
         selectedRequestId={selectedRequest?.id ?? null}
-        searchQuery={searchQuery}
         savedResponses={savedResponses}
         customRequests={customRequests}
         selectedSavedResponseId={selectedSavedResponseId}
         onSelectOverview={selectOverview}
         onSelectEnvironment={onSelectEnvironment}
-        onSearchQueryChange={setSearchQuery}
         onSelectOperation={(operation) => {
           selectOperation(operation.id)
         }}
@@ -1024,7 +1117,7 @@ export function WorkspacePage({
         onCreateCustomRequest={handleCreateCustomRequest}
         onSelectCustomRequest={handleSelectCustomRequest}
       />
-      <SidebarInset className="h-svh overflow-hidden bg-background text-foreground">
+      <SidebarInset className="h-svh min-w-0 overflow-hidden bg-background text-foreground">
         <RequestTabStrip
           activeOperationId={selectedRequest?.id ?? ""}
           operations={openOperations}
@@ -1057,12 +1150,16 @@ export function WorkspacePage({
                 onUpdateDraft={updateCurrentDraft}
                 onUpdateCustomRequest={handleUpdateCustomRequest}
                 curlCommand={requestCurlCommand}
+                pageMarkdown={requestPageMarkdown}
               />
             ) : (
               <ApiOverview
                 savedResponses={savedResponses}
                 onSelectSavedResponse={handleSelectSavedResponse}
                 onSelectEnvironment={onSelectEnvironment}
+                onSelectOperation={(selectedOperationId) =>
+                  selectOperation(selectedOperationId)
+                }
               />
             )}
           </main>
@@ -1111,6 +1208,7 @@ function RequestWorkspace({
   onUpdateDraft,
   onUpdateCustomRequest,
   curlCommand,
+  pageMarkdown,
 }: {
   request: WorkspaceRequest
   resolvedRequestUrl: string
@@ -1133,6 +1231,7 @@ function RequestWorkspace({
     >
   ) => void
   curlCommand?: string
+  pageMarkdown: string
 }) {
   const isWebSocket = request.transport === "websocket"
   const visibleRequestTabs = isWebSocket ? websocketRequestTabs : requestTabs
@@ -1153,17 +1252,20 @@ function RequestWorkspace({
 
   return (
     <>
-      <div className="mb-4 flex items-center gap-1 text-[13px] text-muted-foreground">
-        <span className="truncate">{apiInfo.title}</span>
-        <span>/</span>
-        <span className="truncate">{request.tag}</span>
-        <span>/</span>
-        <span className="truncate font-normal text-foreground">
-          {request.displayPath}
-        </span>
-        {request.operation?.hasAuth ? (
-          <LockIcon className="size-4 text-muted-foreground" />
-        ) : null}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1 text-[13px] text-muted-foreground">
+          <span className="truncate">{apiInfo.title}</span>
+          <span>/</span>
+          <span className="truncate">{request.tag}</span>
+          <span>/</span>
+          <span className="truncate font-normal text-foreground">
+            {request.displayPath}
+          </span>
+          {request.operation?.hasAuth ? (
+            <LockIcon className="size-4 text-muted-foreground" />
+          ) : null}
+        </div>
+        <CopyPageAction markdown={pageMarkdown} title={request.summary} />
       </div>
 
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12.5rem] sm:gap-1">
@@ -1385,19 +1487,27 @@ function ApiOverview({
   savedResponses,
   onSelectSavedResponse,
   onSelectEnvironment,
+  onSelectOperation,
 }: {
   savedResponses: SavedResponseSummary[]
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onSelectEnvironment: () => void
+  onSelectOperation: (operationId: string) => void
 }) {
   const { activeEnvironment } = useEnvironment()
   const tags = new Set(apiOperations.map((operation) => operation.tag))
+  const operationGroups = getOperationGroups({ query: "", requestOnly: false })
+  const overviewMarkdown = React.useMemo(buildApiOverviewMarkdown, [])
 
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col">
-      <header className="flex flex-col gap-7 py-5 sm:py-5">
-        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row">
-          <div className="flex max-w-3xl flex-col gap-2">
+    <section className="mx-auto flex w-full max-w-7xl flex-col">
+      <header className="flex flex-col gap-6 py-5 sm:py-7">
+        <div className="flex flex-col items-start justify-between gap-6 lg:flex-row">
+          <div className="flex max-w-3xl flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">v{apiInfo.version}</Badge>
+              <Badge variant="outline">OpenAPI {apiSpecVersion}</Badge>
+            </div>
             <h1 className="text-3xl font-medium tracking-tight text-foreground">
               {apiInfo.title}
             </h1>
@@ -1407,31 +1517,248 @@ function ApiOverview({
               </p>
             ) : null}
           </div>
-          <Button type="button" variant="outline" onClick={onSelectEnvironment}>
-            <Settings2Icon data-icon="inline-start" />
-            Environment
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onSelectEnvironment}
+            >
+              <Settings2Icon data-icon="inline-start" />
+              Environment
+            </Button>
+            <CopyPageAction markdown={overviewMarkdown} title={apiInfo.title} />
+          </div>
         </div>
       </header>
 
       <Separator />
 
-      <section className="flex flex-col gap-4 py-8">
-        <h2 className="text-base font-medium text-foreground">API surface</h2>
-        <div className="grid divide-y divide-border overflow-hidden rounded-lg border border-border bg-background sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          <OverviewStat
-            label="Endpoints"
-            value={apiOperations.length}
-            icon={ArrowLeftRightIcon}
-          />
-          <OverviewStat label="Tags" value={tags.size} icon={TagsIcon} />
-          <OverviewStat
-            label="Servers"
-            value={apiServers.length}
-            icon={ServerIcon}
-          />
+      <div className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-8">
+          <section className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-medium text-foreground">
+                API surface
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                A live summary generated from this OpenAPI document.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <OverviewStat
+                label="Endpoints"
+                value={apiOperations.length}
+                icon={ArrowLeftRightIcon}
+              />
+              <OverviewStat label="Tags" value={tags.size} icon={TagsIcon} />
+              <OverviewStat
+                label="Servers"
+                value={apiServers.length}
+                icon={ServerIcon}
+              />
+            </div>
+          </section>
+
+          {apiResources.length > 0 ? (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-lg font-medium text-foreground">Resources</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {apiResources.map((resource) => (
+                  <Card key={`${resource.label}:${resource.url}`} size="sm">
+                    <CardHeader>
+                      <CardTitle>{resource.label}</CardTitle>
+                      <CardDescription>
+                        {resource.description ?? resource.url}
+                      </CardDescription>
+                      <CardAction>
+                        <ExternalLinkIcon className="text-muted-foreground" />
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent>
+                      <Button variant="link" asChild className="h-auto p-0">
+                        <a href={resource.url} target="_blank" rel="noreferrer">
+                          Open resource
+                          <ExternalLinkIcon data-icon="inline-end" />
+                        </a>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-medium text-foreground">
+                Operations
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Requests grouped by their OpenAPI tags.
+              </p>
+            </div>
+            <div className="flex flex-col gap-4">
+              {operationGroups.map((group) => {
+                const tagDescription = apiTags.find(
+                  (tag) => tag.name === group.name
+                )?.description
+
+                return (
+                  <Collapsible key={group.name}>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{group.name}</CardTitle>
+                        <CardDescription>
+                          {tagDescription ??
+                            `${group.operations.length} operation${group.operations.length === 1 ? "" : "s"}`}
+                        </CardDescription>
+                        <CardAction>
+                          <CollapsibleTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Toggle ${group.name} operations`}
+                              className="data-[state=open]:[&_svg]:rotate-180"
+                            >
+                              <ChevronDownIcon className="transition-transform" />
+                            </Button>
+                          </CollapsibleTrigger>
+                        </CardAction>
+                      </CardHeader>
+                      <CollapsibleContent>
+                        <CardContent className="flex flex-col px-0">
+                          {group.operations.map((operation, index) => (
+                            <React.Fragment key={operation.id}>
+                              {index > 0 ? <Separator /> : null}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="h-auto w-full justify-start rounded-none px-4 py-3 text-left"
+                                onClick={() => onSelectOperation(operation.id)}
+                              >
+                                <Badge
+                                  variant="outline"
+                                  className={getMethodClassName(
+                                    operation.method
+                                  )}
+                                >
+                                  {operation.method}
+                                </Badge>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate font-medium text-foreground">
+                                    {operation.summary}
+                                  </span>
+                                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                                    {operation.path}
+                                  </span>
+                                </span>
+                                {operation.hasAuth ? (
+                                  <LockIcon className="text-muted-foreground" />
+                                ) : null}
+                                <ChevronRightIcon className="text-muted-foreground" />
+                              </Button>
+                            </React.Fragment>
+                          ))}
+                        </CardContent>
+                      </CollapsibleContent>
+                    </Card>
+                  </Collapsible>
+                )
+              })}
+            </div>
+          </section>
         </div>
-      </section>
+
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Server</CardTitle>
+              <CardDescription>
+                Active workspace destination and declared origins.
+              </CardDescription>
+              <CardAction>
+                <ServerIcon className="text-muted-foreground" />
+              </CardAction>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">
+                  {activeEnvironment?.name ?? "No environment selected"}
+                </span>
+                <code className="text-xs break-all text-foreground">
+                  {activeEnvironment?.baseUrl || "No base URL configured"}
+                </code>
+              </div>
+              {apiServers.length > 0 ? <Separator /> : null}
+              {apiServers.map((server) => (
+                <div key={server.url} className="flex flex-col gap-1">
+                  <code className="text-xs break-all text-foreground">
+                    {server.url}
+                  </code>
+                  {server.description ? (
+                    <span className="text-xs text-muted-foreground">
+                      {server.description}
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Authentication</CardTitle>
+              <CardDescription>
+                Security schemes declared by the specification.
+              </CardDescription>
+              <CardAction>
+                <ShieldCheckIcon className="text-muted-foreground" />
+              </CardAction>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {apiSecuritySchemes.length > 0 ? (
+                apiSecuritySchemes.map((scheme) => (
+                  <div key={scheme.id} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {scheme.label}
+                      </span>
+                      <Badge variant="outline">{scheme.type}</Badge>
+                    </div>
+                    {scheme.description ? (
+                      <p className="text-xs text-muted-foreground">
+                        {scheme.description}
+                      </p>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No authentication schemes declared.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Workspace</CardTitle>
+              <CardDescription>Current specification context.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col">
+              <OverviewDetail
+                label="Environment"
+                value={activeEnvironment?.name ?? "Not selected"}
+              />
+              <Separator />
+              <OverviewDetail label="OpenAPI" value={apiSpecVersion} />
+              <Separator />
+              <OverviewDetail label="API version" value={apiInfo.version} />
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
 
       <Separator />
 
@@ -1479,14 +1806,12 @@ function ApiOverview({
                       </p>
                     </TableCell>
                     <TableCell>
-                      <p
-                        className={cn(
-                          "text-[11px] font-normal",
-                          getMethodClassName(response.method)
-                        )}
+                      <Badge
+                        variant="outline"
+                        className={cn(getMethodClassName(response.method))}
                       >
                         {response.method}
-                      </p>
+                      </Badge>
                     </TableCell>
 
                     <TableCell>
@@ -1535,60 +1860,6 @@ function ApiOverview({
           </Table>
         </div>
       </section>
-
-      <Separator />
-
-      <section className="grid gap-10 py-8 md:grid-cols-2 md:gap-16">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-base font-medium text-foreground">Servers</h2>
-            <p className="text-sm text-muted-foreground">
-              Origins declared by the OpenAPI specification.
-            </p>
-          </div>
-          <div className="flex flex-col">
-            {apiServers.length > 0 ? (
-              apiServers.map((server, index) => (
-                <React.Fragment key={server.url}>
-                  <div className="flex items-center gap-3 py-3.5">
-                    <ServerIcon
-                      className="size-4 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <code className="min-w-0 flex-1 truncate text-xs text-foreground">
-                      {server.url}
-                    </code>
-                  </div>
-                  {index < apiServers.length - 1 ? <Separator /> : null}
-                </React.Fragment>
-              ))
-            ) : (
-              <p className="py-3.5 text-sm text-muted-foreground">
-                No servers are defined.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-base font-medium text-foreground">Workspace</h2>
-            <p className="text-sm text-muted-foreground">
-              Current request context and specification details.
-            </p>
-          </div>
-          <div className="flex flex-col">
-            <OverviewDetail
-              label="Environment"
-              value={activeEnvironment?.name ?? "Not selected"}
-            />
-            <Separator />
-            <OverviewDetail label="OpenAPI" value={apiSpecVersion} />
-            <Separator />
-            <OverviewDetail label="API version" value={apiInfo.version} />
-          </div>
-        </div>
-      </section>
     </section>
   )
 }
@@ -1631,15 +1902,15 @@ function OverviewStat({
   icon: LucideIcon
 }) {
   return (
-    <div className="flex items-start justify-between gap-6 p-5 sm:p-6">
-      <div className="flex flex-col gap-1">
-        <div className="text-2xl font-medium tracking-tight text-foreground tabular-nums">
-          {value}
-        </div>
-        <div className="text-sm text-muted-foreground">{label}</div>
-      </div>
-      <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-    </div>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+        <CardDescription>{label}</CardDescription>
+        <CardAction>
+          <Icon className="text-muted-foreground" aria-hidden="true" />
+        </CardAction>
+      </CardHeader>
+    </Card>
   )
 }
 
@@ -1789,6 +2060,7 @@ function createStreamResult({
 function connectWebSocketRequest({
   request,
   url,
+  headers,
   draft,
   startedAt,
   setRequestSnapshotByOperationId,
@@ -1799,6 +2071,7 @@ function connectWebSocketRequest({
 }: {
   request: WorkspaceRequest
   url: string
+  headers: Headers
   draft: RequestDraft
   startedAt: number
   setRequestSnapshotByOperationId: React.Dispatch<
@@ -1814,8 +2087,11 @@ function connectWebSocketRequest({
   environment: SavedRequestSnapshot["environment"]
 }) {
   const wsUrl = url.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")
-  const socket = new WebSocket(wsUrl)
+  const relaySocket = createRelayWebSocket(wsUrl, headers)
+  const socket = relaySocket.socket
   socket.binaryType = "arraybuffer"
+  let connectionReady = false
+  let terminalError = false
   let bodyText = "[connecting] WebSocket connection started\n"
   let frames: WebSocketFrame[] = []
   let frameSequence = 0
@@ -1859,7 +2135,7 @@ function connectWebSocketRequest({
     id: request.id,
     close: () => socket.close(),
     send: (message) => {
-      if (socket.readyState !== WebSocket.OPEN) {
+      if (socket.readyState !== WebSocket.OPEN || !connectionReady) {
         return false
       }
 
@@ -1881,12 +2157,13 @@ function connectWebSocketRequest({
     }),
   }))
 
-  socket.onopen = () => {
+  const markConnected = () => {
     if (activeStreamRef.current !== stream) {
       socket.close()
       return
     }
 
+    connectionReady = true
     bodyText += "[open] Connected\n"
     setWebSocketConnectionStateByOperationId((states) => ({
       ...states,
@@ -1895,7 +2172,34 @@ function connectWebSocketRequest({
     publishResult(101, "Connected")
   }
 
+  socket.onopen = () => {
+    if (relaySocket.waitsForRelay) {
+      relaySocket.beginRelayHandshake()
+      return
+    }
+    markConnected()
+  }
+
   socket.onmessage = async (event) => {
+    if (relaySocket.waitsForRelay && !connectionReady) {
+      const control = relaySocket.isRelayControlMessage(event.data)
+      if (control === "ready") {
+        markConnected()
+      } else if (control === "error") {
+        terminalError = true
+        setResponseStateByOperationId((states) => ({
+          ...states,
+          [request.id]: {
+            status: "error",
+            error: relaySocket.relayError(),
+            durationMs: Math.round(performance.now() - startedAt),
+          },
+        }))
+        socket.close()
+      }
+      return
+    }
+
     const message = await webSocketMessageToText(event.data)
     if (activeStreamRef.current !== stream) {
       return
@@ -1911,6 +2215,7 @@ function connectWebSocketRequest({
       return
     }
 
+    terminalError = true
     setWebSocketConnectionStateByOperationId((states) => ({
       ...states,
       [request.id]: "disconnected",
@@ -1919,7 +2224,9 @@ function connectWebSocketRequest({
       ...states,
       [request.id]: {
         status: "error",
-        error: "WebSocket connection failed.",
+        error: relaySocket.waitsForRelay
+          ? relaySocket.relayError()
+          : "WebSocket connection failed.",
         durationMs: Math.round(performance.now() - startedAt),
       },
     }))
@@ -1936,6 +2243,7 @@ function connectWebSocketRequest({
       ...states,
       [request.id]: "disconnected",
     }))
+    if (terminalError) return
     publishResult(
       event.wasClean ? 200 : 499,
       event.wasClean ? "Disconnected" : "Disconnected Unexpectedly"

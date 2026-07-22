@@ -1,3 +1,4 @@
+import { apiSecuritySchemes } from "@/lib/openapi"
 import type { ApiOperation, ApiParameter } from "@/lib/openapi"
 import type { KeyValueRow } from "./types"
 
@@ -26,12 +27,36 @@ export function parameterToRow(parameter: ApiParameter): KeyValueRow {
 export function getHeaderRows(operation: ApiOperation): KeyValueRow[] {
   const rows: KeyValueRow[] = []
 
-  if (operation.hasAuth) {
-    rows.push({
-      key: "Authorization",
-      value: "Bearer {{access_token}}",
-      description: "Generated from bearerAuth security",
-    })
+  for (const securityName of operation.securitySchemeNames) {
+    const scheme = apiSecuritySchemes.find((item) => item.id === securityName)
+    const variableName = securityName.replaceAll(/[^a-zA-Z0-9_]/g, "_")
+
+    if (scheme?.type === "http" && scheme.scheme?.toLowerCase() === "bearer") {
+      rows.push({
+        key: "Authorization",
+        value: `Bearer {{${securityName === "bearerAuth" ? "access_token" : variableName}}}`,
+        description: `Generated from ${securityName} security`,
+      })
+    } else if (
+      scheme?.type === "http" &&
+      scheme.scheme?.toLowerCase() === "basic"
+    ) {
+      rows.push({
+        key: "Authorization",
+        value: `Basic {{${variableName}}}`,
+        description: `Generated from ${securityName} security`,
+      })
+    } else if (
+      scheme?.type === "apiKey" &&
+      scheme.location === "header" &&
+      scheme.parameterName
+    ) {
+      rows.push({
+        key: scheme.parameterName,
+        value: `{{${variableName}}}`,
+        description: `Generated from ${securityName} security`,
+      })
+    }
   }
 
   if (operation.requestContentTypes[0]) {

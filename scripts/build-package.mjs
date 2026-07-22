@@ -30,10 +30,31 @@ const serverModule = runtime
     `const UI_STYLES = ${JSON.stringify(safeStyles)}`
   )
 const commonJsModule = serverModule
+  .replace(
+    'import { randomBytes } from "node:crypto"',
+    'const { randomBytes } = require("node:crypto")'
+  )
+  .replace(
+    'import { lookup } from "node:dns/promises"',
+    'const { lookup } = require("node:dns/promises")'
+  )
+  .replace(
+    'import { isIP } from "node:net"',
+    'const { isIP } = require("node:net")'
+  )
+  .replace(
+    'import { Readable } from "node:stream"',
+    'const { Readable } = require("node:stream")'
+  )
+  .replace(
+    'import { WebSocket as NodeWebSocket, WebSocketServer } from "ws"',
+    'const { WebSocket: NodeWebSocket, WebSocketServer } = require("ws")'
+  )
+  .replace("export function createSkaperRelay", "function createSkaperRelay")
   .replace("export function skaperUI", "function skaperUI")
   .replace(
     "export default skaperUI",
-    "module.exports = skaperUI\nmodule.exports.skaperUI = skaperUI"
+    "module.exports = skaperUI\nmodule.exports.skaperUI = skaperUI\nmodule.exports.createSkaperRelay = createSkaperRelay"
   )
 
 await writeFile(resolve(outputDirectory, "index.js"), serverModule)

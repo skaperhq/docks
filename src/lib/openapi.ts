@@ -41,6 +41,7 @@ export type SchemaObject = {
 
 type MediaTypeObject = {
   schema?: SchemaObject | ReferenceObject
+  example?: unknown
 }
 
 type RequestBodyObject = {
@@ -63,6 +64,21 @@ type ParameterObject = {
 
 type SecurityRequirementObject = Record<string, string[]>
 
+type ExternalDocumentationObject = {
+  description?: string
+  url: string
+}
+
+type SecuritySchemeObject = {
+  type: string
+  description?: string
+  name?: string
+  in?: string
+  scheme?: string
+  bearerFormat?: string
+  openIdConnectUrl?: string
+}
+
 type OperationObject = {
   tags?: string[]
   summary?: string
@@ -81,13 +97,54 @@ type OpenApiSpec = {
     title: string
     version: string
     description?: string
+    contact?: {
+      name?: string
+      url?: string
+      email?: string
+    }
+    license?: {
+      name: string
+      url?: string
+    }
   }
-  servers?: Array<{ url: string }>
-  tags?: Array<{ name: string }>
+  externalDocs?: ExternalDocumentationObject
+  servers?: Array<{
+    url: string
+    description?: string
+    variables?: Record<
+      string,
+      { default: string; description?: string; enum?: string[] }
+    >
+  }>
+  security?: SecurityRequirementObject[]
+  tags?: Array<{
+    name: string
+    description?: string
+    externalDocs?: ExternalDocumentationObject
+  }>
   paths: Record<string, Partial<Record<HttpMethod, OperationObject>>>
   components?: {
     schemas?: Record<string, SchemaObject>
+    securitySchemes?: Record<string, SecuritySchemeObject | ReferenceObject>
   }
+}
+
+export type ApiSecurityScheme = {
+  id: string
+  label: string
+  type: string
+  description?: string
+  location?: string
+  parameterName?: string
+  scheme?: string
+  bearerFormat?: string
+  openIdConnectUrl?: string
+}
+
+export type ApiResource = {
+  label: string
+  url: string
+  description?: string
 }
 
 export type ApiOperation = {
@@ -104,6 +161,7 @@ export type ApiOperation = {
   pathParameters: ApiParameter[]
   headerParameters: ApiParameter[]
   hasAuth: boolean
+  securitySchemeNames: string[]
   requestBodyRequired: boolean
   requestContentTypes: string[]
   requestSchemaName?: string
@@ -235,6 +293,10 @@ function getFirstRequestSchema(requestBody: RequestBodyObject | undefined) {
     contentType,
     schema,
     name,
+    example:
+      mediaType.example !== undefined
+        ? mediaType.example
+        : createSchemaExample(schema),
   }
 }
 
@@ -312,6 +374,10 @@ function getFirstResponseSchema(response: ResponseObject) {
     contentType,
     schema,
     name,
+    example:
+      mediaType.example !== undefined
+        ? mediaType.example
+        : createSchemaExample(schema),
   }
 }
 
@@ -325,7 +391,7 @@ function getOperationResponses(operation: OperationObject): ApiResponse[] {
       contentTypes: Object.keys(response.content ?? {}),
       schemaName: responseSchema.name,
       schema: responseSchema.schema,
-      example: createSchemaExample(responseSchema.schema),
+      example: responseSchema.example ?? null,
     }
   })
 }
@@ -419,6 +485,96 @@ export const apiInfo = openApiSpec.info
 export const apiSpecVersion =
   openApiSpec.openapi ?? openApiSpec.swagger ?? "Unknown"
 export const apiServers = openApiSpec.servers ?? []
+export const apiTags = openApiSpec.tags ?? []
+
+export const apiSecuritySchemes: ApiSecurityScheme[] = Object.entries(
+  openApiSpec.components?.securitySchemes ?? {}
+).flatMap(([id, scheme]) => {
+  if (isReferenceObject(scheme)) {
+    return []
+  }
+
+  const normalizedScheme = scheme.scheme?.toLowerCase()
+  const label =
+    normalizedScheme === "bearer"
+      ? `Bearer${scheme.bearerFormat ? ` (${scheme.bearerFormat})` : ""}`
+      : normalizedScheme === "basic"
+        ? "HTTP Basic"
+        : scheme.type === "apiKey"
+          ? `API key${scheme.name ? ` (${scheme.name})` : ""}`
+          : scheme.type === "openIdConnect"
+            ? "OpenID Connect"
+            : scheme.type === "oauth2"
+              ? "OAuth 2.0"
+              : id
+
+  return [
+    {
+      id,
+      label,
+      type: scheme.type,
+      description: scheme.description,
+      location: scheme.in,
+      parameterName: scheme.name,
+      scheme: scheme.scheme,
+      bearerFormat: scheme.bearerFormat,
+      openIdConnectUrl: scheme.openIdConnectUrl,
+    },
+  ]
+})
+
+export const apiResources: ApiResource[] = [
+  ...(openApiSpec.externalDocs
+    ? [
+        {
+          label: openApiSpec.externalDocs.description ?? "Documentation",
+          url: openApiSpec.externalDocs.url,
+          description: "External documentation",
+        },
+      ]
+    : []),
+  ...(openApiSpec.info.contact?.url
+    ? [
+        {
+          label: openApiSpec.info.contact.name ?? "Support",
+          url: openApiSpec.info.contact.url,
+          description: "API contact",
+        },
+      ]
+    : []),
+  ...(openApiSpec.info.contact?.email
+    ? [
+        {
+          label: openApiSpec.info.contact.name ?? "Email support",
+          url: `mailto:${openApiSpec.info.contact.email}`,
+          description: openApiSpec.info.contact.email,
+        },
+      ]
+    : []),
+  ...(openApiSpec.info.license?.url
+    ? [
+        {
+          label: openApiSpec.info.license.name,
+          url: openApiSpec.info.license.url,
+          description: "License",
+        },
+      ]
+    : []),
+]
+
+export function getEffectiveSecuritySchemeNames(
+  operationSecurity: SecurityRequirementObject[] | undefined,
+  documentSecurity: SecurityRequirementObject[] = []
+) {
+  const effectiveSecurity =
+    operationSecurity === undefined ? documentSecurity : operationSecurity
+
+  return Array.from(
+    new Set(
+      effectiveSecurity.flatMap((requirement) => Object.keys(requirement))
+    )
+  )
+}
 
 export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
   ([path, methods]) =>
@@ -439,8 +595,9 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
         method,
         responses
       )
-      const hasAuth = operation.security?.some((requirement) =>
-        Object.keys(requirement).includes("bearerAuth")
+      const securitySchemeNames = getEffectiveSecuritySchemeNames(
+        operation.security,
+        openApiSpec.security
       )
 
       return [
@@ -463,12 +620,13 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
           headerParameters: parameters.filter(
             (parameter) => parameter.location === "header"
           ),
-          hasAuth: Boolean(hasAuth),
+          hasAuth: securitySchemeNames.length > 0,
+          securitySchemeNames,
           requestBodyRequired: Boolean(requestBody?.required),
           requestContentTypes,
           requestSchemaName: requestSchema.name,
           requestSchema: requestSchema.schema,
-          requestExample: createSchemaExample(requestSchema.schema),
+          requestExample: requestSchema.example ?? null,
           responseCodes,
           responses,
           requestMode,

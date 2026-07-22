@@ -1,4 +1,5 @@
 import { buildRequestUrl } from "../api-request"
+import { skaperFetch } from "../relay"
 import type { KeyValueRow } from "@/components/api-reference/types"
 
 export function buildSseUrl({
@@ -40,7 +41,7 @@ export function openSseConnection({
 }) {
   const abortController = new AbortController()
 
-  fetch(url, {
+  skaperFetch(url, {
     method,
     headers: {
       ...headers,

@@ -55,7 +55,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuItem,
   SidebarRail,
@@ -64,10 +63,10 @@ import { apiOperations, getOperationGroups } from "@/lib/openapi"
 
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { RequestSearchCommand } from "@/components/request-search-command"
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   selectedOperationId: string | null
-  searchQuery: string
   savedResponses: SavedResponseSummary[]
   customRequests: PersistedCustomRequest[]
   selectedSavedResponseId?: string | null
@@ -75,7 +74,6 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   activePage?: "workspace" | "environment"
   onSelectOverview: () => void
   onSelectEnvironment: () => void
-  onSearchQueryChange: (query: string) => void
   onSelectOperation: (operation: ApiOperation) => void
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
@@ -92,7 +90,6 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
 
 export function AppSidebar({
   selectedOperationId,
-  searchQuery,
   savedResponses,
   customRequests,
   selectedSavedResponseId,
@@ -100,7 +97,6 @@ export function AppSidebar({
   activePage = "workspace",
   onSelectOverview,
   onSelectEnvironment,
-  onSearchQueryChange,
   onSelectOperation,
   onSelectSavedResponse,
   onDeleteSavedResponse,
@@ -125,8 +121,8 @@ export function AppSidebar({
   const [sseOpen, setSseOpen] = React.useState(false)
   const [websocketOpen, setWebsocketOpen] = React.useState(false)
   const groups = React.useMemo(
-    () => getOperationGroups({ query: searchQuery, requestOnly: false }),
-    [searchQuery]
+    () => getOperationGroups({ query: "", requestOnly: false }),
+    []
   )
   const httpOpenApiGroups = React.useMemo(() => {
     return groups
@@ -173,18 +169,7 @@ export function AppSidebar({
     const sseCustom: PersistedCustomRequest[] = []
     const wsCustom: PersistedCustomRequest[] = []
 
-    const normalizedQuery = searchQuery.trim().toLowerCase()
-
     for (const request of customRequests) {
-      if (
-        normalizedQuery &&
-        !`${request.name} ${request.url} ${request.method} ${request.transport} ${request.mode}`
-          .toLowerCase()
-          .includes(normalizedQuery)
-      ) {
-        continue
-      }
-
       if (request.transport === "websocket") {
         wsCustom.push(request)
       } else if (request.mode === "sse") {
@@ -199,7 +184,7 @@ export function AppSidebar({
       sse: sseCustom,
       websocket: wsCustom,
     }
-  }, [customRequests, searchQuery])
+  }, [customRequests])
 
   React.useEffect(() => {
     if (
@@ -287,15 +272,13 @@ export function AppSidebar({
 
         <SidebarGroup className="mt-1 px-2 py-1">
           <SidebarGroupContent className="flex flex-col gap-2">
-            <label className="relative block">
-              <SidebarInput
-                value={searchQuery}
-                onChange={(event) => onSearchQueryChange(event.target.value)}
-                className="h-8 rounded-sm border-sidebar-border bg-sidebar-accent text-sidebar-foreground placeholder:text-muted-foreground"
-                placeholder="Search requests"
-                aria-label="Search API requests"
-              />
-            </label>
+            <RequestSearchCommand
+              customRequests={customRequests}
+              onSelectOverview={onSelectOverview}
+              onSelectEnvironment={onSelectEnvironment}
+              onSelectOperation={onSelectOperation}
+              onSelectCustomRequest={onSelectCustomRequest}
+            />
             <Button
               type="button"
               onClick={() => setRequestDialogOpen(true)}

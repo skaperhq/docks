@@ -1,3 +1,9 @@
+import { randomBytes } from "node:crypto"
+import { lookup } from "node:dns/promises"
+import { isIP } from "node:net"
+import { Readable } from "node:stream"
+import { WebSocket as NodeWebSocket, WebSocketServer } from "ws"
+
 const UI_SCRIPT = null
 const UI_STYLES = null
 
@@ -220,6 +226,112 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
   </div>
 `
 
+const RELAY_REQUEST_HEADER = "x-skaper-relay-request"
+const RELAY_RESPONSE_HEADER = "x-skaper-relay-response"
+const RELAY_TOKEN_HEADER = "x-skaper-relay-token"
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "content-length",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+])
+
+export function createSkaperRelay(options) {
+  if (
+    !options ||
+    typeof options.path !== "string" ||
+    !options.path.startsWith("/") ||
+    options.path.startsWith("//") ||
+    options.path.includes("?") ||
+    options.path.includes("#")
+  ) {
+    throw new TypeError("createSkaperRelay requires an absolute relay path.")
+  }
+
+  const allowedOrigins = new Set(
+    (options.allowedOrigins ?? []).map(normalizeConfiguredOrigin)
+  )
+  if (
+    allowedOrigins.size === 0 &&
+    typeof options.allowDestination !== "function"
+  ) {
+    throw new TypeError(
+      "createSkaperRelay requires allowedOrigins or allowDestination."
+    )
+  }
+
+  const token = randomBytes(32).toString("base64url")
+  const webSocketServer = new WebSocketServer({ noServer: true })
+  const relay = {
+    __skaperRelay: true,
+    path: options.path,
+    token,
+    handler: null,
+    handleUpgrade: null,
+  }
+
+  const authorize = async (url, transport) => {
+    const normalizedOrigin = normalizeTargetOrigin(url)
+    const explicitlyAllowed = allowedOrigins.has(normalizedOrigin)
+    const dynamicallyAllowed =
+      !explicitlyAllowed && typeof options.allowDestination === "function"
+        ? await options.allowDestination({ url, transport })
+        : false
+
+    if (!explicitlyAllowed && !dynamicallyAllowed) {
+      throw new RelayError(
+        403,
+        `Relay destination is not allowed: ${url.origin}`
+      )
+    }
+
+    if (
+      !explicitlyAllowed &&
+      options.allowPrivateNetwork !== true &&
+      (await resolvesToPrivateNetwork(url.hostname))
+    ) {
+      throw new RelayError(
+        403,
+        "Relay destination resolves to a private network."
+      )
+    }
+  }
+
+  relay.handler = function relayHandler(context, response) {
+    if (context?.req?.raw instanceof Request) {
+      return handleRelayRequest(context.req.raw, token, authorize)
+    }
+
+    if (context && response && typeof response.setHeader === "function") {
+      return handleExpressRelay(context, response, token, authorize)
+    }
+
+    if (context instanceof Request) {
+      return handleRelayRequest(context, token, authorize)
+    }
+
+    return relayErrorResponse(500, "Unsupported relay handler context.")
+  }
+
+  relay.handleUpgrade = function handleUpgrade(request, socket, head) {
+    const requestUrl = new URL(request.url ?? "/", "http://localhost")
+    if (requestUrl.pathname !== options.path) return false
+
+    webSocketServer.handleUpgrade(request, socket, head, (client) => {
+      bridgeWebSocket(client, token, authorize)
+    })
+    return true
+  }
+
+  return relay
+}
+
 export function skaperUI(options) {
   if (!options || typeof options.url !== "string" || !options.url.trim()) {
     throw new TypeError("skaperUI requires a non-empty OpenAPI url.")
@@ -235,6 +347,15 @@ export function skaperUI(options) {
   ) {
     throw new TypeError(
       "skaperUI workspaceId option must be a non-empty string."
+    )
+  }
+
+  if (
+    options.relay !== undefined &&
+    (!options.relay || options.relay.__skaperRelay !== true)
+  ) {
+    throw new TypeError(
+      "skaperUI relay option must come from createSkaperRelay()."
     )
   }
 
@@ -261,6 +382,444 @@ export function skaperUI(options) {
 
 export default skaperUI
 
+async function handleRelayRequest(request, token, authorize) {
+  try {
+    if (request.method !== "POST") {
+      throw new RelayError(405, "Relay requests must use POST.")
+    }
+    if (request.headers.get(RELAY_TOKEN_HEADER) !== token) {
+      throw new RelayError(403, "Invalid relay token.")
+    }
+
+    const metadata = decodeRelayMetadata(
+      request.headers.get(RELAY_REQUEST_HEADER)
+    )
+    const target = parseRelayTarget(metadata.url, "http")
+    const method = normalizeRelayMethod(metadata.method)
+    await authorize(target, "http")
+
+    const upstreamHeaders = parseRelayHeaders(metadata.headers)
+    if (
+      !upstreamHeaders.has("content-type") &&
+      request.headers.get("content-type")?.startsWith("multipart/form-data;")
+    ) {
+      upstreamHeaders.set("content-type", request.headers.get("content-type"))
+    }
+
+    let upstreamUrl = target
+    let upstreamMethod = method
+    let upstreamBody =
+      method === "GET" || method === "HEAD" ? undefined : request.body
+    let upstreamResponse
+
+    for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+      upstreamResponse = await fetch(upstreamUrl, {
+        method: upstreamMethod,
+        headers: upstreamHeaders,
+        body: upstreamBody,
+        redirect: "manual",
+        signal: request.signal,
+        ...(upstreamBody ? { duplex: "half" } : {}),
+      })
+
+      const location = upstreamResponse.headers.get("location")
+      if (!location || !isRedirectStatus(upstreamResponse.status)) break
+      if (redirectCount === 5) {
+        throw new RelayError(502, "Upstream exceeded the relay redirect limit.")
+      }
+
+      const nextUrl = parseRelayTarget(
+        new URL(location, upstreamUrl).toString(),
+        "http"
+      )
+      await authorize(nextUrl, "http")
+
+      if (
+        upstreamResponse.status === 303 ||
+        ((upstreamResponse.status === 301 || upstreamResponse.status === 302) &&
+          upstreamMethod === "POST")
+      ) {
+        upstreamMethod = "GET"
+        upstreamBody = undefined
+        upstreamHeaders.delete("content-type")
+      } else if (upstreamBody) {
+        // Streaming request bodies cannot be safely replayed for 307/308.
+        break
+      }
+      upstreamUrl = nextUrl
+    }
+
+    return createRelayResponse(upstreamResponse, upstreamUrl)
+  } catch (error) {
+    if (error instanceof RelayError) {
+      return relayErrorResponse(error.status, error.message)
+    }
+    return relayErrorResponse(
+      502,
+      error instanceof Error
+        ? `Relay could not reach upstream: ${error.message}`
+        : "Relay could not reach upstream."
+    )
+  }
+}
+
+async function handleExpressRelay(request, response, token, authorize) {
+  try {
+    const protocol = request.socket?.encrypted ? "https" : "http"
+    const host = request.headers?.host || "localhost"
+    const url = new URL(
+      request.originalUrl || request.url || "/",
+      `${protocol}://${host}`
+    )
+    const headers = new Headers()
+    for (const [key, value] of Object.entries(request.headers ?? {})) {
+      if (Array.isArray(value)) {
+        for (const item of value) headers.append(key, item)
+      } else if (value !== undefined) {
+        headers.set(key, value)
+      }
+    }
+    const body =
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : Readable.toWeb(request)
+    const fetchRequest = new Request(url, {
+      method: request.method,
+      headers,
+      body,
+      ...(body ? { duplex: "half" } : {}),
+    })
+    const relayResponse = await handleRelayRequest(
+      fetchRequest,
+      token,
+      authorize
+    )
+
+    response.statusCode = relayResponse.status
+    if (relayResponse.statusText)
+      response.statusMessage = relayResponse.statusText
+    relayResponse.headers.forEach((value, key) =>
+      response.setHeader(key, value)
+    )
+    if (!relayResponse.body) {
+      response.end()
+      return
+    }
+    Readable.fromWeb(relayResponse.body).pipe(response)
+  } catch (error) {
+    const relayResponse = relayErrorResponse(
+      500,
+      error instanceof Error ? error.message : "Relay adapter failed."
+    )
+    response.statusCode = relayResponse.status
+    relayResponse.headers.forEach((value, key) =>
+      response.setHeader(key, value)
+    )
+    response.end(await relayResponse.text())
+  }
+}
+
+function createRelayResponse(upstreamResponse, upstreamUrl) {
+  const headers = new Headers(upstreamResponse.headers)
+  const setCookies =
+    typeof upstreamResponse.headers.getSetCookie === "function"
+      ? upstreamResponse.headers.getSetCookie()
+      : upstreamResponse.headers.get("set-cookie")
+        ? [upstreamResponse.headers.get("set-cookie")]
+        : []
+  const location = headers.get("location")
+
+  for (const name of HOP_BY_HOP_HEADERS) headers.delete(name)
+  headers.delete("content-encoding")
+  headers.delete("set-cookie")
+  // Do not let the browser follow an unresolved upstream redirect outside the
+  // relay. The location remains available in relay metadata for diagnostics.
+  headers.delete("location")
+  headers.set(
+    RELAY_RESPONSE_HEADER,
+    encodeRelayMetadata({
+      url: upstreamResponse.url || upstreamUrl.toString(),
+      setCookies,
+      location,
+    })
+  )
+
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers,
+  })
+}
+
+function relayErrorResponse(status, message) {
+  return Response.json(
+    { error: message },
+    {
+      status,
+      headers: {
+        "cache-control": "no-store",
+        "x-skaper-relay-error": "1",
+      },
+    }
+  )
+}
+
+function bridgeWebSocket(client, token, authorize) {
+  let upstream = null
+  let ready = false
+  const controlTimeout = setTimeout(() => {
+    sendWebSocketControlError(client, "WebSocket relay handshake timed out.")
+    client.close(1008, "Relay handshake timeout")
+  }, 5000)
+
+  client.once("message", async (data, isBinary) => {
+    clearTimeout(controlTimeout)
+    if (isBinary || data.byteLength > 64 * 1024) {
+      sendWebSocketControlError(client, "Invalid WebSocket relay handshake.")
+      client.close(1008, "Invalid relay handshake")
+      return
+    }
+
+    try {
+      const control = JSON.parse(data.toString())
+      if (
+        control?.type !== "skaper.connect" ||
+        control?.token !== token ||
+        typeof control?.request?.url !== "string"
+      ) {
+        throw new RelayError(403, "Invalid WebSocket relay handshake.")
+      }
+
+      const target = parseRelayTarget(control.request.url, "websocket")
+      await authorize(target, "websocket")
+      const headers = parseRelayHeaders(control.request.headers)
+      const protocolHeader = headers.get("sec-websocket-protocol")
+      const protocols = protocolHeader
+        ? protocolHeader
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : []
+      headers.delete("sec-websocket-protocol")
+
+      upstream = new NodeWebSocket(target, protocols, {
+        headers: Object.fromEntries(headers.entries()),
+        followRedirects: false,
+      })
+
+      upstream.on("open", () => {
+        ready = true
+        if (client.readyState === NodeWebSocket.OPEN) {
+          client.send(JSON.stringify({ type: "skaper.ready" }))
+        }
+      })
+      upstream.on("message", (message, binary) => {
+        if (client.readyState === NodeWebSocket.OPEN) {
+          client.send(message, { binary })
+        }
+      })
+      upstream.on("close", (code, reason) => {
+        if (client.readyState === NodeWebSocket.OPEN) {
+          client.close(code || 1000, reason.toString().slice(0, 123))
+        }
+      })
+      upstream.on("error", (error) => {
+        if (!ready) sendWebSocketControlError(client, error.message)
+        if (client.readyState === NodeWebSocket.OPEN) {
+          client.close(1011, "Upstream WebSocket error")
+        }
+      })
+
+      client.on("message", (message, binary) => {
+        if (ready && upstream?.readyState === NodeWebSocket.OPEN) {
+          upstream.send(message, { binary })
+        }
+      })
+    } catch (error) {
+      sendWebSocketControlError(
+        client,
+        error instanceof Error ? error.message : "WebSocket relay failed."
+      )
+      client.close(1008, "Relay rejected destination")
+    }
+  })
+
+  client.on("close", () => {
+    clearTimeout(controlTimeout)
+    if (upstream?.readyState === NodeWebSocket.OPEN) upstream.close()
+    else if (upstream && upstream.readyState !== NodeWebSocket.CLOSED) {
+      upstream.terminate()
+    }
+  })
+}
+
+function sendWebSocketControlError(client, error) {
+  if (client.readyState === NodeWebSocket.OPEN) {
+    client.send(JSON.stringify({ type: "skaper.error", error }))
+  }
+}
+
+function parseRelayTarget(value, transport) {
+  if (typeof value !== "string") {
+    throw new RelayError(400, "Relay target URL is missing.")
+  }
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new RelayError(400, "Relay target URL is invalid.")
+  }
+  const allowedProtocols =
+    transport === "websocket"
+      ? new Set(["ws:", "wss:"])
+      : new Set(["http:", "https:"])
+  if (!allowedProtocols.has(url.protocol)) {
+    throw new RelayError(400, `Relay does not support ${url.protocol} URLs.`)
+  }
+  if (url.username || url.password) {
+    throw new RelayError(400, "Relay target URLs cannot contain credentials.")
+  }
+  return url
+}
+
+function parseRelayHeaders(value) {
+  if (!Array.isArray(value)) {
+    throw new RelayError(400, "Relay request headers are invalid.")
+  }
+  const headers = new Headers()
+  for (const entry of value) {
+    if (!Array.isArray(entry) || entry.length !== 2) {
+      throw new RelayError(400, "Relay request headers are invalid.")
+    }
+    const [name, headerValue] = entry
+    if (typeof name !== "string" || typeof headerValue !== "string") {
+      throw new RelayError(400, "Relay request headers are invalid.")
+    }
+    const lowerName = name.toLowerCase()
+    if (
+      HOP_BY_HOP_HEADERS.has(lowerName) ||
+      lowerName.startsWith("x-skaper-relay-")
+    ) {
+      continue
+    }
+    headers.append(name, headerValue)
+  }
+  return headers
+}
+
+function normalizeRelayMethod(value) {
+  if (typeof value !== "string" || !/^[A-Za-z]+$/.test(value)) {
+    throw new RelayError(400, "Relay HTTP method is invalid.")
+  }
+  return value.toUpperCase()
+}
+
+function decodeRelayMetadata(value) {
+  if (!value || value.length > 64 * 1024) {
+    throw new RelayError(400, "Relay request metadata is missing or too large.")
+  }
+  try {
+    return JSON.parse(Buffer.from(value, "base64url").toString("utf8"))
+  } catch {
+    throw new RelayError(400, "Relay request metadata is invalid.")
+  }
+}
+
+function encodeRelayMetadata(value) {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url")
+}
+
+function normalizeConfiguredOrigin(value) {
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new TypeError(`Invalid relay origin: ${value}`)
+  }
+  if (
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    url.username ||
+    url.password
+  ) {
+    throw new TypeError(`Relay allowlist entries must be origins: ${value}`)
+  }
+  if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) {
+    throw new TypeError(`Unsupported relay origin protocol: ${url.protocol}`)
+  }
+  return normalizeTargetOrigin(url)
+}
+
+function normalizeTargetOrigin(url) {
+  const protocol =
+    url.protocol === "ws:"
+      ? "http:"
+      : url.protocol === "wss:"
+        ? "https:"
+        : url.protocol
+  return `${protocol}//${url.host}`
+}
+
+async function resolvesToPrivateNetwork(hostname) {
+  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase()
+  if (normalized === "localhost" || normalized.endsWith(".localhost"))
+    return true
+  try {
+    const addresses = isIP(normalized)
+      ? [{ address: normalized }]
+      : await lookup(normalized, { all: true, verbatim: true })
+    return addresses.some(({ address }) => isPrivateAddress(address))
+  } catch {
+    // Let the actual upstream connection report DNS failures.
+    return false
+  }
+}
+
+function isPrivateAddress(address) {
+  if (
+    address === "::1" ||
+    address === "::" ||
+    address.startsWith("fe80:") ||
+    address.startsWith("fc") ||
+    address.startsWith("fd")
+  ) {
+    return true
+  }
+  const mapped = address.startsWith("::ffff:") ? address.slice(7) : address
+  const parts = mapped.split(".").map(Number)
+  if (parts.length !== 4 || parts.some(Number.isNaN)) return false
+  const [a, b] = parts
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  )
+}
+
+function isRedirectStatus(status) {
+  return (
+    status === 301 ||
+    status === 302 ||
+    status === 303 ||
+    status === 307 ||
+    status === 308
+  )
+}
+
+class RelayError extends Error {
+  constructor(status, message) {
+    super(message)
+    this.status = status
+  }
+}
+
 function renderSkaperHtml(options, hashedPassword, workspaceId) {
   const title = escapeHtml(options.title || "Skaper · API Workspace")
   const url = JSON.stringify(options.url).replaceAll("<", "\\u003c")
@@ -272,6 +831,11 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
     "<",
     "\\u003c"
   )
+  const serializedRelay = JSON.stringify(
+    options.relay
+      ? { path: options.relay.path, token: options.relay.token }
+      : null
+  ).replaceAll("<", "\\u003c")
   const nonceAttribute = options.nonce
     ? ` nonce="${escapeHtml(options.nonce)}"`
     : ""
@@ -301,7 +865,29 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
       async function loadSkaper() {
         try {
           const openApiUrl = ${url};
-          const response = await fetch(openApiUrl, { credentials: "same-origin" });
+          const relay = ${serializedRelay};
+          globalThis.__SKAPER_RELAY__ = relay;
+          const resolvedOpenApiUrl = new URL(openApiUrl, window.location.href);
+          const shouldRelayOpenApi = relay && resolvedOpenApiUrl.origin !== window.location.origin;
+          const response = shouldRelayOpenApi
+            ? await fetch(relay.path, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                  "content-type": "application/octet-stream",
+                  "x-skaper-relay-token": relay.token,
+                  "x-skaper-relay-request": encodeRelayMetadata({
+                    url: resolvedOpenApiUrl.toString(),
+                    method: "GET",
+                    headers: [],
+                  }),
+                },
+              })
+            : await fetch(openApiUrl, { credentials: "same-origin" });
+          if (response.headers.has("x-skaper-relay-error")) {
+            const payload = await response.json();
+            throw new Error(payload.error || "OpenAPI relay request failed");
+          }
           if (!response.ok) {
             throw new Error("Unable to load OpenAPI document (" + response.status + ")");
           }
@@ -318,6 +904,13 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
               : String(error);
           }
         }
+      }
+
+      function encodeRelayMetadata(value) {
+        const bytes = new TextEncoder().encode(JSON.stringify(value));
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
       }
 
       const passwordHash = ${hashedPassword ? JSON.stringify(hashedPassword) : "null"};

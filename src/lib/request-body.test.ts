@@ -133,6 +133,7 @@ function createOperation(patch: Partial<ApiOperation>): ApiOperation {
     pathParameters: [],
     headerParameters: [],
     hasAuth: false,
+    securitySchemeNames: [],
     requestBodyRequired: true,
     requestContentTypes: [],
     requestExample: null,

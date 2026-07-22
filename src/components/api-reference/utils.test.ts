@@ -46,6 +46,7 @@ describe("API reference utilities", () => {
   test("derives authorization, content-type, and custom header rows", () => {
     const operation = {
       hasAuth: true,
+      securitySchemeNames: ["bearerAuth"],
       requestContentTypes: ["application/json"],
       headerParameters: [
         {

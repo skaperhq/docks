@@ -65,8 +65,6 @@ export function EnvironmentPage({
     updateVariable,
   } = useEnvironment()
 
-  const [searchQuery, setSearchQuery] = React.useState("")
-
   // Track password/secret visibility by variable id
   const [visibleSecrets, setVisibleSecrets] = React.useState<
     Record<string, boolean>
@@ -138,13 +136,11 @@ export function EnvironmentPage({
       <AppSidebar
         activePage="environment"
         selectedOperationId={null}
-        searchQuery={searchQuery}
         savedResponses={[]}
         customRequests={[]}
         selectedRequestId={null}
         onSelectOverview={onSelectWorkspace}
         onSelectEnvironment={() => {}}
-        onSearchQueryChange={setSearchQuery}
         onSelectOperation={(operation) => onSelectOperation(operation.id)}
         onSelectSavedResponse={(response) =>
           onSelectOperation(response.operationId)
@@ -156,7 +152,7 @@ export function EnvironmentPage({
           onSelectOperation(`custom:${request.id}`)
         }
       />
-      <SidebarInset className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
+      <SidebarInset className="flex h-svh min-w-0 flex-col overflow-hidden bg-background text-foreground">
         {/* Header */}
         <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-card px-2 text-muted-foreground">
           <div className="flex items-center gap-1">

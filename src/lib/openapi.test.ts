@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import {
   apiOperations,
   formatSchema,
+  getEffectiveSecuritySchemeNames,
   getOpenApiRequestMode,
   getOperationGroups,
 } from "./openapi"
@@ -109,5 +110,20 @@ describe("OpenAPI model", () => {
         },
       ])
     ).toEqual({ requestMode: "standard", hasEventStreamResponse: true })
+  })
+
+  test("inherits document security while allowing operations to disable it", () => {
+    const documentSecurity = [{ bearerAuth: [] }]
+
+    expect(
+      getEffectiveSecuritySchemeNames(undefined, documentSecurity)
+    ).toEqual(["bearerAuth"])
+    expect(getEffectiveSecuritySchemeNames([], documentSecurity)).toEqual([])
+    expect(
+      getEffectiveSecuritySchemeNames(
+        [{ apiKey: [] }, { bearerAuth: [], apiKey: [] }],
+        documentSecurity
+      )
+    ).toEqual(["apiKey", "bearerAuth"])
   })
 })
