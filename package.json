@@ -1,5 +1,5 @@
 {
-  "name": "@skaper/ui",
+  "name": "@skaper/docks",
   "version": "0.1.1",
   "description": "A self-contained OpenAPI documentation and API request UI for Node.js routes.",
   "license": "MIT",
