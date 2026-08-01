@@ -12,7 +12,7 @@ import {
 } from "./lib/storage-adapter"
 import type { StorageAdapter } from "./lib/storage-adapter"
 import { EnvironmentPage } from "./routes/environment"
-import { WorkspacePage } from "./routes/app"
+import { WorkspacePage } from "./routes/index"
 import { cn } from "./lib/utils"
 import { getRuntimeWorkspaceId, getWorkspaceStorageKey } from "./lib/workspace"
 
