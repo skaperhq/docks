@@ -36,10 +36,10 @@ function EnvironmentRoutePage() {
   return (
     <EnvironmentPage
       onSelectWorkspace={() =>
-        navigate({ to: "/app", search: { operationId: undefined } })
+        navigate({ to: "/", search: { operationId: undefined } })
       }
       onSelectOperation={(operationId) =>
-        navigate({ to: "/app", search: { operationId } })
+        navigate({ to: "/", search: { operationId } })
       }
     />
   )

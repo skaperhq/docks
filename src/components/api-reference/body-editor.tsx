@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import { json } from "@codemirror/lang-json"
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import type { Extension } from "@codemirror/state"
 import { Compartment, EditorState } from "@codemirror/state"
 import { basicSetup, EditorView } from "codemirror"
 import { openSearchPanel } from "@codemirror/search"
+import { tags } from "@lezer/highlight"
 import { cn } from "@/lib/utils"
 
 export type BodyEditorHandle = {
@@ -66,6 +68,7 @@ export const BodyEditor = React.forwardRef<BodyEditorHandle, BodyEditorProps>(
           extensions: [
             basicSetup,
             editorTheme,
+            syntaxHighlighting(editorHighlightStyle),
             EditorView.updateListener.of((update) => {
               if (update.docChanged) {
                 onChangeRef.current?.(update.state.doc.toString())
@@ -156,7 +159,7 @@ const editorTheme = EditorView.theme({
   "&": {
     height: "100%",
     backgroundColor: "var(--background)",
-    color: "var(--foreground)",
+    color: "var(--editor-foreground)",
     fontSize: "13px",
   },
   ".cm-scroller": {
@@ -179,7 +182,7 @@ const editorTheme = EditorView.theme({
     backgroundColor: "color-mix(in oklch, var(--muted), transparent 55%)",
   },
   ".cm-cursor": {
-    borderLeftColor: "var(--foreground)",
+    borderLeftColor: "var(--editor-foreground)",
   },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
     backgroundColor: "color-mix(in oklch, var(--primary), transparent 82%)",
@@ -188,3 +191,25 @@ const editorTheme = EditorView.theme({
     outline: "none",
   },
 })
+
+const editorHighlightStyle = HighlightStyle.define([
+  {
+    tag: [tags.keyword, tags.bool, tags.null],
+    color: "var(--editor-keyword)",
+  },
+  {
+    tag: [tags.string, tags.special(tags.string)],
+    color: "var(--editor-string)",
+  },
+  { tag: tags.number, color: "var(--editor-number)" },
+  {
+    tag: [tags.propertyName, tags.attributeName],
+    color: "var(--editor-property)",
+  },
+  {
+    tag: tags.comment,
+    color: "var(--muted-foreground)",
+    fontStyle: "italic",
+  },
+  { tag: tags.invalid, color: "var(--destructive)" },
+])

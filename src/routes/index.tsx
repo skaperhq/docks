@@ -167,7 +167,7 @@ function App() {
       operationId={operationId}
       onOperationChange={(nextOperationId) =>
         navigate({
-          to: "/app",
+          to: "/",
           search: { operationId: nextOperationId },
         })
       }
@@ -1432,13 +1432,13 @@ function CustomRequestAddressBar({
       >
         <SelectTrigger
           aria-label="Request transport"
-          className="h-full w-32 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="h-full w-22 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="http">HTTP</SelectItem>
-          <SelectItem value="websocket">WebSocket</SelectItem>
+          <SelectItem value="websocket">WS</SelectItem>
         </SelectContent>
       </Select>
       <Select
@@ -1452,7 +1452,7 @@ function CustomRequestAddressBar({
       >
         <SelectTrigger
           aria-label="HTTP mode"
-          className="h-full w-32 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="h-full w-28 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
         >
           <SelectValue />
         </SelectTrigger>
@@ -1473,7 +1473,7 @@ function CustomRequestAddressBar({
         <SelectTrigger
           aria-label="HTTP method"
           className={cn(
-            "h-full w-28 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal shadow-none focus-visible:ring-0 dark:bg-transparent",
+            "h-full w-22 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal shadow-none focus-visible:ring-0 dark:bg-transparent",
             getMethodClassName(request.method)
           )}
         >
@@ -1719,12 +1719,16 @@ function OverviewStat({
   icon: LucideIcon
 }) {
   return (
-    <Card size="sm">
+    <Card size="sm" className="rounded-md">
       <CardHeader>
         <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
         <CardDescription>{label}</CardDescription>
         <CardAction>
-          <Icon className="text-muted-foreground" aria-hidden="true" />
+          <Icon
+            className="text-muted-foreground"
+            aria-hidden="true"
+            strokeWidth={1.2}
+          />
         </CardAction>
       </CardHeader>
     </Card>
@@ -1853,7 +1857,7 @@ function createStreamResult({
   return {
     status,
     statusText,
-    ok: status >= 200 && status < 400,
+    ok: status === 101 || (status >= 200 && status < 400),
     durationMs: Math.round(performance.now() - startedAt),
     sizeBytes: new Blob([bodyText]).size,
     contentType: "text/plain; charset=utf-8",

@@ -186,6 +186,17 @@ export function AppSidebar({
     }
   }, [customRequests])
 
+  const selectedCustomRequestProtocol = (() => {
+    const selectedRequest = customRequests.find(
+      (request) => getCustomRequestKey(request.id) === selectedRequestId
+    )
+
+    if (!selectedRequest) return null
+    if (selectedRequest.transport === "websocket") return "websocket"
+    if (selectedRequest.mode === "sse") return "sse"
+    return "http"
+  })()
+
   React.useEffect(() => {
     if (
       activePage !== "workspace" ||
@@ -209,15 +220,17 @@ export function AppSidebar({
       return
     }
 
-    const selectedCustomRequest = customRequests.find(
-      (request) => getCustomRequestKey(request.id) === selectedRequestId
-    )
-    const isWs = selectedCustomRequest?.transport === "websocket"
-    const isSse = selectedCustomRequest?.mode === "sse"
+    const isWs = selectedCustomRequestProtocol === "websocket"
+    const isSse = selectedCustomRequestProtocol === "sse"
     setHttpOpen(!isWs && !isSse)
     setSseOpen(isSse)
     setWebsocketOpen(isWs)
-  }, [activePage, customRequests, selectedOperationId, selectedRequestId])
+  }, [
+    activePage,
+    selectedCustomRequestProtocol,
+    selectedOperationId,
+    selectedRequestId,
+  ])
 
   return (
     <Sidebar {...props}>
@@ -855,7 +868,7 @@ function OperationItem({
       >
         <span
           className={cn(
-            "w-10 shrink-0 text-[10px] font-semibold tabular-nums",
+            "w-10 shrink-0 text-left text-[10px] font-semibold tabular-nums",
             operation.requestMode === "sse"
               ? "text-violet-600 dark:text-violet-400"
               : getMethodClassName(operation.method)
@@ -904,7 +917,7 @@ function OperationItem({
         >
           <span
             className={cn(
-              "w-10 shrink-0 text-[10px] font-semibold tabular-nums",
+              "w-10 shrink-0 text-left text-[10px] font-semibold tabular-nums",
               operation.requestMode === "sse"
                 ? "text-violet-600 dark:text-violet-400"
                 : getMethodClassName(operation.method)

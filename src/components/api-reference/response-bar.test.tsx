@@ -116,6 +116,7 @@ describe("ResponseBar", () => {
           ...successResponse.result,
           status: 101,
           statusText: "Connected",
+          ok: false,
           websocketFrames: [
             {
               id: "frame-1",
@@ -130,6 +131,9 @@ describe("ResponseBar", () => {
     })
 
     expect(screen.getByRole("tab", { name: "Messages (1)" })).toBeTruthy()
+    expect(screen.getByText("101 Connected").className).toContain(
+      "text-emerald-600"
+    )
     expect(screen.queryByRole("tab", { name: "Body" })).toBeNull()
     expect(screen.getByText('{"type":"notification.connected"}')).toBeTruthy()
     expect(screen.getByTestId("body-editor").textContent).toContain(

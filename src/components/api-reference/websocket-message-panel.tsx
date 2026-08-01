@@ -18,8 +18,8 @@ export function WebSocketMessagePanel({
   const canSend = connectionStatus === "connected" && message.length > 0
 
   return (
-    <section className="flex min-h-[calc(100svh-17rem)] flex-col overflow-hidden rounded-sm border border-border bg-background">
-      <div className="relative flex min-h-64 flex-1">
+    <section className="flex h-72 flex-col overflow-hidden rounded-sm border border-border bg-background">
+      <div className="relative flex min-h-0 flex-1">
         {!message ? (
           <span className="pointer-events-none absolute top-3 left-14 z-10 font-mono text-sm text-muted-foreground/70">
             Compose message

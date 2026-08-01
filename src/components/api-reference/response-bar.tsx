@@ -209,7 +209,7 @@ export function ResponseBar({
             <>
               <span
                 className={
-                  result.ok
+                  result.ok || (isWebSocket && result.status === 101)
                     ? "rounded-md bg-emerald-500/10 px-3 py-1 font-normal text-emerald-600 dark:text-emerald-400"
                     : "rounded-md bg-rose-500/10 px-3 py-1 font-normal text-rose-600 dark:text-rose-400"
                 }
@@ -461,7 +461,7 @@ function SseEventsView({
         />
       </div>
       <ScrollArea className="min-h-0 flex-1">
-        <Table className="min-w-224 table-fixed font-mono text-xs">
+        <Table className="min-w-4xl table-fixed font-mono text-xs">
           <TableHeader className="bg-muted/35">
             <TableRow className="hover:bg-transparent">
               {sseColumns.map((column) => {
