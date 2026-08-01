@@ -1,12 +1,14 @@
 {
   "name": "@skaper/docks",
   "version": "0.1.1",
-  "description": "A self-contained OpenAPI documentation and API request UI for Node.js routes.",
+  "description": "A self-contained OpenAPI workspace and MCP server for developers and AI agents.",
   "license": "MIT",
   "keywords": [
     "openapi",
     "api-documentation",
     "api-client",
+    "mcp",
+    "ai-agents",
     "node",
     "hono",
     "express"
@@ -24,7 +26,15 @@
       "import": "./dist/package/index.js",
       "require": "./dist/package/index.cjs"
     },
+    "./mcp": {
+      "types": "./types/mcp.d.ts",
+      "import": "./dist/package/mcp.js",
+      "require": "./dist/package/mcp.cjs"
+    },
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "skaper": "./dist/package/cli.js"
   },
   "files": [
     "dist/package",
@@ -36,8 +46,11 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "cmdk": "^1.1.1",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
@@ -48,6 +61,7 @@
     "prepack": "npm run build:package",
     "package": "npm pack --cache /tmp/skaper-ui-npm-cache",
     "test:package": "npm run build:package && node scripts/test-package.mjs",
+    "test:mcp": "npm run build:package && node scripts/test-mcp.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",
