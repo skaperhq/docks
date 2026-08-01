@@ -1,6 +1,6 @@
 {
   "name": "@skaper/docks",
-  "version": "0.1.1",
+  "version": "0.1.1-beta.1",
   "description": "A self-contained OpenAPI workspace and MCP server for developers and AI agents.",
   "license": "MIT",
   "keywords": [
