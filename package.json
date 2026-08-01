@@ -1,5 +1,5 @@
 {
-  "name": "skaper",
+  "name": "@skaper/ui",
   "version": "0.1.1",
   "description": "A self-contained OpenAPI documentation and API request UI for Node.js routes.",
   "license": "MIT",
@@ -46,7 +46,7 @@
     "build:ui": "vite build --config vite.lib.config.ts",
     "build:package": "npm run build:ui && node scripts/build-package.mjs",
     "prepack": "npm run build:package",
-    "package": "npm pack --cache /tmp/skaper-npm-cache",
+    "package": "npm pack --cache /tmp/skaper-ui-npm-cache",
     "test:package": "npm run build:package && node scripts/test-package.mjs",
     "preview": "vite preview",
     "test": "vitest run",

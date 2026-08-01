@@ -863,7 +863,7 @@ function OperationItem({
         >
           {operation.requestMode === "sse" ? "SSE" : operation.method}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[12px] text-sidebar-foreground">
+        <span className="min-w-0 flex-1 truncate text-left text-[12px] text-sidebar-foreground">
           {operation.displayPath}
         </span>
       </Button>
@@ -912,7 +912,7 @@ function OperationItem({
           >
             {operation.requestMode === "sse" ? "SSE" : operation.method}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[12px] text-sidebar-foreground">
+          <span className="min-w-0 flex-1 truncate text-left text-[12px] text-sidebar-foreground">
             {operation.displayPath}
           </span>
         </Button>

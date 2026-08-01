@@ -86,7 +86,7 @@ describe("RequestSearchCommand", () => {
     )
 
     const operation = apiOperations.find(
-      (item) => item.id === "POST /auth/login"
+      (item) => item.id === "POST /api/teams"
     )!
     fireEvent.change(
       screen.getByPlaceholderText("Search pages and requests…"),

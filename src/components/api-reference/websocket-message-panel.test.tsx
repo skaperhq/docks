@@ -42,11 +42,9 @@ describe("WebSocketMessagePanel", () => {
     )
 
     expect(
-      (
-        screen.getByRole("button", {
-          name: "Send WebSocket message",
-        }) as HTMLButtonElement
-      ).disabled
+      screen
+        .getByRole("button", { name: "Send WebSocket message" })
+        .hasAttribute("disabled")
     ).toBe(true)
 
     rerender(

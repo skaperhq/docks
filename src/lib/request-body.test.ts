@@ -58,18 +58,15 @@ describe("OpenAPI request body initialization", () => {
     ])
   })
 
-  test("initializes a real multipart OpenAPI operation as form-data", () => {
-    const uploadOperation = apiOperations.find(
-      (operation) => operation.id === "POST /user/profile-picture"
+  test("initializes a real JSON OpenAPI operation as raw input", () => {
+    const createTeamOperation = apiOperations.find(
+      (operation) => operation.id === "POST /api/teams"
     )
 
-    expect(uploadOperation).toBeDefined()
-    expect(createOperationRequestBodyDraft(uploadOperation)).toMatchObject({
-      mode: "form-data",
-      contentType: "multipart/form-data",
-      formDataRows: [
-        expect.objectContaining({ key: "file", type: "file", required: true }),
-      ],
+    expect(createTeamOperation).toBeDefined()
+    expect(createOperationRequestBodyDraft(createTeamOperation)).toMatchObject({
+      mode: "raw",
+      contentType: "application/json",
     })
   })
 

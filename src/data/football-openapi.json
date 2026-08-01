@@ -1,0 +1,760 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Skaper Football API",
+    "version": "1.0.0",
+    "description": "A public, stateless football API built to demonstrate HTTP requests, Server-Sent Events, and WebSockets in Skaper.",
+    "contact": {
+      "name": "Skaper",
+      "url": "https://github.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current host"
+    },
+    {
+      "url": "http://localhost:3100",
+      "description": "Local demo server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Teams",
+      "description": "Validated, stateless mock CRUD operations for football teams."
+    },
+    {
+      "name": "Live Matches",
+      "description": "Deterministic SSE and WebSocket match feeds."
+    }
+  ],
+  "paths": {
+    "/api/teams": {
+      "get": {
+        "tags": ["Teams"],
+        "summary": "List football teams",
+        "description": "Returns the seeded team fixtures with offset pagination.",
+        "operationId": "listTeams",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of teams to return.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of teams to skip.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of football teams.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamListResponse"
+                },
+                "example": {
+                  "data": [
+                    {
+                      "id": "northbridge-fc",
+                      "name": "Northbridge Football Club",
+                      "shortName": "Northbridge",
+                      "code": "NFC",
+                      "country": "England",
+                      "city": "Northbridge",
+                      "stadium": "Foundry Park",
+                      "founded": 1908,
+                      "colors": ["Forest green", "White"],
+                      "coach": "Maya Bennett"
+                    }
+                  ],
+                  "meta": {
+                    "total": 4,
+                    "limit": 10,
+                    "offset": 0
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Teams"],
+        "summary": "Create a football team",
+        "description": "Validates and echoes a new team with a generated identifier. The seeded dataset is not mutated.",
+        "operationId": "createTeam",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamInput"
+              },
+              "example": {
+                "name": "Summit Athletic Club",
+                "shortName": "Summit",
+                "code": "SAC",
+                "country": "Scotland",
+                "city": "Glenmore",
+                "stadium": "Summit Ground",
+                "founded": 1924,
+                "colors": ["Navy", "Gold"],
+                "coach": "Avery Morgan"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Mock team created.",
+            "headers": {
+              "Location": {
+                "description": "Location of the mock team resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/api/teams/{teamId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamId"
+        }
+      ],
+      "get": {
+        "tags": ["Teams"],
+        "summary": "Get a football team",
+        "operationId": "getTeam",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "description": "Seeded team identifier. Try northbridge-fc.",
+            "schema": {
+              "type": "string",
+              "example": "northbridge-fc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Football team details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Teams"],
+        "summary": "Replace a football team",
+        "description": "Returns a full mock replacement without changing the seeded dataset.",
+        "operationId": "replaceTeam",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "description": "Seeded team identifier. Try northbridge-fc.",
+            "schema": {
+              "type": "string",
+              "example": "northbridge-fc"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mock replacement result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Teams"],
+        "summary": "Update selected team fields",
+        "description": "Merges validated fields into the seeded fixture for this response only.",
+        "operationId": "updateTeam",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "description": "Seeded team identifier. Try northbridge-fc.",
+            "schema": {
+              "type": "string",
+              "example": "northbridge-fc"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamPatch"
+              },
+              "example": {
+                "coach": "Jordan Ellis",
+                "colors": ["Forest green", "Cream"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mock update result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Teams"],
+        "summary": "Delete a football team",
+        "description": "Returns a successful mock deletion without changing the seeded dataset.",
+        "operationId": "deleteTeam",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "description": "Seeded team identifier. Try northbridge-fc.",
+            "schema": {
+              "type": "string",
+              "example": "northbridge-fc"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Mock team deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/matches/{matchId}/events": {
+      "get": {
+        "tags": ["Live Matches"],
+        "summary": "Stream live match events",
+        "description": "Opens a finite Server-Sent Events stream containing a deterministic match timeline.",
+        "operationId": "streamMatchEvents",
+        "parameters": [
+          {
+            "name": "matchId",
+            "in": "path",
+            "required": true,
+            "description": "Live demo match identifier.",
+            "schema": {
+              "type": "string",
+              "enum": ["northbridge-harbor-2026"],
+              "example": "northbridge-harbor-2026"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Numbered match events. The stream closes after match.complete.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "id: 1\nevent: connected\ndata: {\"type\":\"connected\",\"matchId\":\"northbridge-harbor-2026\"}\n\n"
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/matches/{matchId}/live": {
+      "ws": {
+        "tags": ["Live Matches"],
+        "summary": "Connect to live match updates",
+        "description": "A public WebSocket that sends a snapshot and deterministic match updates. Send ping or subscribe messages while connected.",
+        "operationId": "connectToLiveMatch",
+        "parameters": [
+          {
+            "name": "matchId",
+            "in": "path",
+            "required": true,
+            "description": "Live demo match identifier.",
+            "schema": {
+              "type": "string",
+              "enum": ["northbridge-harbor-2026"],
+              "example": "northbridge-harbor-2026"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSocketClientMessage"
+              },
+              "example": {
+                "type": "subscribe",
+                "topics": ["score", "commentary"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "101": {
+            "description": "WebSocket connection established.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSocketServerMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "TeamId": {
+        "name": "teamId",
+        "in": "path",
+        "required": true,
+        "description": "Seeded team identifier. Try northbridge-fc.",
+        "schema": {
+          "type": "string",
+          "example": "northbridge-fc"
+        }
+      },
+      "MatchId": {
+        "name": "matchId",
+        "in": "path",
+        "required": true,
+        "description": "Live demo match identifier.",
+        "schema": {
+          "type": "string",
+          "enum": ["northbridge-harbor-2026"],
+          "example": "northbridge-harbor-2026"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed JSON request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "BAD_REQUEST",
+                "message": "Request body must contain valid JSON."
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The requested fixture was not found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Team not found."
+              }
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "The request did not satisfy the documented schema.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Request validation failed.",
+                "details": [
+                  {
+                    "path": "code",
+                    "message": "Code must contain exactly three uppercase letters."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Team": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "northbridge-fc"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/TeamInput"
+          }
+        ]
+      },
+      "TeamInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "shortName",
+          "code",
+          "country",
+          "city",
+          "stadium",
+          "founded",
+          "colors",
+          "coach"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 80,
+            "example": "Northbridge Football Club"
+          },
+          "shortName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 30,
+            "example": "Northbridge"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "example": "NFC"
+          },
+          "country": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 56,
+            "example": "England"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 56,
+            "example": "Northbridge"
+          },
+          "stadium": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "example": "Foundry Park"
+          },
+          "founded": {
+            "type": "integer",
+            "minimum": 1850,
+            "maximum": 2026,
+            "example": 1908
+          },
+          "colors": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 30
+            },
+            "example": ["Forest green", "White"]
+          },
+          "coach": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "example": "Maya Bennett"
+          }
+        }
+      },
+      "TeamPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 80
+          },
+          "shortName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 30
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "country": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 56
+          },
+          "city": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 56
+          },
+          "stadium": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          },
+          "founded": {
+            "type": "integer",
+            "minimum": 1850,
+            "maximum": 2026
+          },
+          "colors": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 30
+            }
+          },
+          "coach": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          }
+        }
+      },
+      "TeamListResponse": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Team"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": ["total", "limit", "offset"],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "WebSocketClientMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["ping"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "topics"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["subscribe"]
+              },
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["score", "commentary"]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "WebSocketServerMessage": {
+        "type": "object",
+        "required": ["type", "matchId"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "match.snapshot"
+          },
+          "matchId": {
+            "type": "string",
+            "example": "northbridge-harbor-2026"
+          },
+          "minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 90
+          },
+          "homeScore": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "awayScore": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

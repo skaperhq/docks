@@ -1,4 +1,4 @@
-import openApiSpecJson from "@/data/mock-openapi.json"
+import openApiSpecJson from "@/data/football-openapi.json"
 import type { RequestMode } from "./api-reference-actions"
 
 type HttpMethod =

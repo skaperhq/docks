@@ -41,4 +41,65 @@ describe("workspace-scoped IndexedDB storage", () => {
       /workspaceId must be a non-empty string/i
     )
   })
+
+  test("round-trips structured SSE events in saved responses", async () => {
+    const storage = createIndexedDbStorageAdapter("sse-event-responses")
+
+    const saved = await storage.saveResponse({
+      data: {
+        operationId: "custom:events",
+        method: "GET",
+        path: "/events",
+        name: "Event capture",
+        requestSnapshot: {
+          method: "GET",
+          transport: "http",
+          mode: "sse",
+          url: "https://api.example.com/events",
+          params: [],
+          headers: [],
+          body: { mode: "none", contentType: "", value: "" },
+          environment: null,
+          sentAt: "2026-07-16T00:29:26.000Z",
+        },
+        result: {
+          status: 200,
+          statusText: "Complete",
+          ok: true,
+          durationMs: 1200,
+          sizeBytes: 25,
+          contentType: "text/event-stream",
+          bodyText: "id: 1\ndata: ready\n\n",
+          headers: [],
+          cookies: [],
+          url: "https://api.example.com/events",
+          sseEvents: [
+            {
+              sequence: 1,
+              eventId: "1",
+              eventName: "message",
+              data: "ready",
+              receivedAt: Date.UTC(2026, 6, 16, 0, 29, 26, 418),
+            },
+          ],
+        },
+      },
+    })
+
+    await expect(
+      storage.getSavedResponse({ data: saved.id })
+    ).resolves.toMatchObject({
+      result: {
+        sseEvents: [
+          {
+            sequence: 1,
+            eventId: "1",
+            eventName: "message",
+            data: "ready",
+            receivedAt: Date.UTC(2026, 6, 16, 0, 29, 26, 418),
+          },
+        ],
+      },
+    })
+  })
 })

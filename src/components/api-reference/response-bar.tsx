@@ -1,10 +1,12 @@
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ArrowUpDownIcon,
   BracesIcon,
   CopyIcon,
   SaveIcon,
   SearchIcon,
+  Trash2Icon,
   WrapTextIcon,
 } from "lucide-react"
 import * as React from "react"
@@ -21,19 +23,34 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BodyEditor } from "./body-editor"
 import type { BodyEditorHandle } from "./body-editor"
-import type { ResponseHeader, ResponseState, WebSocketFrame } from "./types"
+import type {
+  ResponseHeader,
+  ResponseState,
+  ServerSentEvent,
+  WebSocketFrame,
+} from "./types"
 import { prettyPrintJson } from "./utils"
 
 export function ResponseBar({
   response,
   transport = "http",
+  mode = "standard",
   height,
   onHeightChange,
   onHeightCommit,
   onSaveResponse,
+  onClearSseEvents,
   saveDefaultName,
   saveDisabled = false,
   showSave = true,
@@ -41,16 +58,19 @@ export function ResponseBar({
 }: {
   response: ResponseState
   transport?: "http" | "websocket"
+  mode?: "standard" | "sse"
   height: number
   onHeightChange: (height: number) => void
   onHeightCommit: (height: number) => void
   onSaveResponse: (name: string) => void
+  onClearSseEvents?: () => void
   saveDefaultName: string
   saveDisabled?: boolean
   showSave?: boolean
   curlCommand?: string
 }) {
   const isWebSocket = transport === "websocket"
+  const isSse = transport === "http" && mode === "sse"
   const result = response.status === "success" ? response.result : undefined
   const isLoading = response.status === "loading"
   const error = response.status === "error" ? response.error : undefined
@@ -58,7 +78,7 @@ export function ResponseBar({
   const [saveName, setSaveName] = React.useState(saveDefaultName)
   const [lineWrapping, setLineWrapping] = React.useState(false)
   const [activeResponseTab, setActiveResponseTab] = React.useState(
-    isWebSocket ? "Messages" : "Body"
+    isWebSocket ? "Messages" : isSse ? "EventStream" : "Body"
   )
   const [toastMessage, setToastMessage] = React.useState("")
   const bodyEditorRef = React.useRef<BodyEditorHandle>(null)
@@ -82,8 +102,10 @@ export function ResponseBar({
   }, [])
 
   React.useEffect(() => {
-    setActiveResponseTab(isWebSocket ? "Messages" : "Body")
-  }, [isWebSocket])
+    setActiveResponseTab(
+      isWebSocket ? "Messages" : isSse ? "EventStream" : "Body"
+    )
+  }, [isSse, isWebSocket])
 
   const showToast = React.useCallback((message: string) => {
     setToastMessage(message)
@@ -148,6 +170,9 @@ export function ResponseBar({
               </TabsTrigger>
             ) : (
               <>
+                {isSse ? (
+                  <TabsTrigger value="EventStream">EventStream</TabsTrigger>
+                ) : null}
                 <TabsTrigger value="Body">Body</TabsTrigger>
                 <TabsTrigger value="Cookies">Cookies</TabsTrigger>
                 <TabsTrigger value="Headers">
@@ -178,7 +203,7 @@ export function ResponseBar({
           ) : null}
           {isLoading ? (
             <span className="rounded-md bg-muted px-3 py-1 font-normal text-muted-foreground">
-              {isWebSocket ? "Connecting..." : "Sending..."}
+              {isWebSocket || isSse ? "Connecting..." : "Sending..."}
             </span>
           ) : result ? (
             <>
@@ -216,27 +241,39 @@ export function ResponseBar({
             />
           </TabsContent>
         ) : (
-          <TabsContent value="Body" className="m-0 flex h-full flex-col">
-            <ResponseBodyToolbar
-              contentType={result?.contentType}
-              bodyText={bodyText}
-              lineWrapping={lineWrapping}
-              onLineWrappingChange={setLineWrapping}
-              onSearch={() => bodyEditorRef.current?.openSearch()}
-              onCopy={() => copyText(bodyText, "Response copied")}
-            />
-            <ResponseCodeView
-              text={
-                bodyText ||
-                (isLoading
-                  ? '{\n  "status": "sending"\n}'
-                  : '{\n  "status": "idle"\n}')
-              }
-              contentType={result?.contentType}
-              lineWrapping={lineWrapping}
-              ref={bodyEditorRef}
-            />
-          </TabsContent>
+          <>
+            {isSse ? (
+              <TabsContent value="EventStream" className="m-0 h-full">
+                <SseEventsView
+                  events={result?.sseEvents}
+                  hasResponse={Boolean(result)}
+                  isConnecting={isLoading}
+                  onClear={onClearSseEvents}
+                />
+              </TabsContent>
+            ) : null}
+            <TabsContent value="Body" className="m-0 flex h-full flex-col">
+              <ResponseBodyToolbar
+                contentType={result?.contentType}
+                bodyText={bodyText}
+                lineWrapping={lineWrapping}
+                onLineWrappingChange={setLineWrapping}
+                onSearch={() => bodyEditorRef.current?.openSearch()}
+                onCopy={() => copyText(bodyText, "Response copied")}
+              />
+              <ResponseCodeView
+                text={
+                  bodyText ||
+                  (isLoading
+                    ? '{\n  "status": "sending"\n}'
+                    : '{\n  "status": "idle"\n}')
+                }
+                contentType={result?.contentType}
+                lineWrapping={lineWrapping}
+                ref={bodyEditorRef}
+              />
+            </TabsContent>
+          </>
         )}
         {!isWebSocket ? (
           <>
@@ -330,6 +367,188 @@ export function ResponseBar({
   )
 }
 
+type SseSortKey = "eventId" | "eventName" | "data" | "receivedAt"
+type SortDirection = "ascending" | "descending"
+
+const sseColumns: {
+  key: SseSortKey
+  label: string
+  className: string
+}[] = [
+  { key: "eventId", label: "ID", className: "w-40" },
+  { key: "eventName", label: "Type", className: "w-40" },
+  { key: "data", label: "Data", className: "min-w-96" },
+  { key: "receivedAt", label: "Time", className: "w-40" },
+]
+
+function SseEventsView({
+  events,
+  hasResponse,
+  isConnecting,
+  onClear,
+}: {
+  events?: ServerSentEvent[]
+  hasResponse: boolean
+  isConnecting: boolean
+  onClear?: () => void
+}) {
+  const [filter, setFilter] = React.useState("")
+  const [sortKey, setSortKey] = React.useState<SseSortKey>("receivedAt")
+  const [sortDirection, setSortDirection] =
+    React.useState<SortDirection>("ascending")
+  const { regex, isValid } = createEventFilter(filter)
+  const capturedEvents = events ?? []
+  const filteredEvents = regex
+    ? capturedEvents.filter(
+        (event) =>
+          regex.test(event.eventId) ||
+          regex.test(event.eventName) ||
+          regex.test(event.data)
+      )
+    : isValid
+      ? capturedEvents
+      : []
+  const sortedEvents = [...filteredEvents].sort((left, right) => {
+    const comparison = compareSseEvents(left, right, sortKey)
+    if (comparison !== 0) {
+      return sortDirection === "ascending" ? comparison : -comparison
+    }
+    return left.sequence - right.sequence
+  })
+
+  function changeSort(nextSortKey: SseSortKey) {
+    if (nextSortKey === sortKey) {
+      setSortDirection((direction) =>
+        direction === "ascending" ? "descending" : "ascending"
+      )
+      return
+    }
+
+    setSortKey(nextSortKey)
+    setSortDirection("ascending")
+  }
+
+  const emptyMessage = !isValid
+    ? "Invalid regular expression."
+    : filter
+      ? "No events match this filter."
+      : events === undefined && hasResponse
+        ? "Structured events were not captured for this saved response. Use Body to inspect the legacy stream."
+        : isConnecting
+          ? "Waiting for server-sent events…"
+          : "No server-sent events captured."
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClear}
+          disabled={!onClear || capturedEvents.length === 0}
+          aria-label="Clear SSE events"
+        >
+          <Trash2Icon />
+        </Button>
+        <Input
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter using regex (example: https?)"
+          aria-label="Filter SSE events using regex"
+          aria-invalid={!isValid}
+          className="h-7 max-w-sm"
+        />
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <Table className="min-w-224 table-fixed font-mono text-xs">
+          <TableHeader className="bg-muted/35">
+            <TableRow className="hover:bg-transparent">
+              {sseColumns.map((column) => {
+                const isActive = sortKey === column.key
+
+                return (
+                  <TableHead
+                    key={column.key}
+                    className={column.className}
+                    aria-sort={isActive ? sortDirection : "none"}
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => changeSort(column.key)}
+                      aria-label={`Sort SSE events by ${column.label}`}
+                    >
+                      {column.label}
+                      <ArrowUpDownIcon data-icon="inline-end" />
+                    </Button>
+                  </TableHead>
+                )
+              })}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedEvents.length > 0 ? (
+              sortedEvents.map((event) => (
+                <TableRow key={event.sequence}>
+                  <TableCell className="text-muted-foreground">
+                    <span className="block truncate" title={event.eventId}>
+                      {event.eventId || "—"}
+                    </span>
+                  </TableCell>
+                  <TableCell>{event.eventName}</TableCell>
+                  <TableCell>
+                    <span className="block truncate" title={event.data}>
+                      {event.data}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground tabular-nums">
+                    {formatFrameTime(event.receivedAt)}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={sseColumns.length}
+                  className="h-24 text-center font-sans text-sm whitespace-normal text-muted-foreground"
+                >
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </ScrollArea>
+    </div>
+  )
+}
+
+function createEventFilter(filter: string) {
+  if (!filter) {
+    return { regex: null, isValid: true }
+  }
+
+  try {
+    return { regex: new RegExp(filter, "i"), isValid: true }
+  } catch {
+    return { regex: null, isValid: false }
+  }
+}
+
+function compareSseEvents(
+  left: ServerSentEvent,
+  right: ServerSentEvent,
+  sortKey: SseSortKey
+) {
+  if (sortKey === "receivedAt") {
+    return left.receivedAt - right.receivedAt
+  }
+
+  return left[sortKey].localeCompare(right[sortKey])
+}
+
 function WebSocketMessagesView({
   frames,
   isConnecting,
@@ -348,7 +567,7 @@ function WebSocketMessagesView({
       )
     : frames
   const selectedFrame =
-    frames.find((frame) => frame.id === selectedFrameId) ?? frames[0]
+    frames.find((frame) => frame.id === selectedFrameId) ?? frames.at(0)
 
   React.useEffect(() => {
     if (!selectedFrameId && frames[0]) {

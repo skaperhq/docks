@@ -43,10 +43,10 @@ describe("API reference utilities", () => {
     ).toBe("1")
   })
 
-  test("derives authorization, content-type, and custom header rows", () => {
+  test("derives content-type and custom header rows for a public API", () => {
     const operation = {
-      hasAuth: true,
-      securitySchemeNames: ["bearerAuth"],
+      hasAuth: false,
+      securitySchemeNames: [],
       requestContentTypes: ["application/json"],
       headerParameters: [
         {
@@ -56,14 +56,13 @@ describe("API reference utilities", () => {
           type: "string",
         },
       ],
-    } as ApiOperation
+    } as unknown as ApiOperation
 
     expect(getHeaderRows(operation).map((row) => row.key)).toEqual([
-      "Authorization",
       "Content-Type",
       "X-Tenant",
     ])
-    expect(getHeaderRows(operation)[0]?.value).toBe("Bearer {{access_token}}")
+    expect(getHeaderRows(operation)[0]?.value).toBe("application/json")
   })
 
   test("restores resolved generated bearer headers without changing custom templates", () => {

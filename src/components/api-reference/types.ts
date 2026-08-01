@@ -11,6 +11,14 @@ export type WebSocketFrame = {
   timestamp: number
 }
 
+export type ServerSentEvent = {
+  sequence: number
+  eventId: string
+  eventName: string
+  data: string
+  receivedAt: number
+}
+
 export type KeyValueRow = {
   key: string
   value: string
@@ -68,6 +76,7 @@ export type ResponseResult = {
   cookies: ResponseHeader[]
   url: string
   websocketFrames?: WebSocketFrame[]
+  sseEvents?: ServerSentEvent[]
 }
 
 export type SavedRequestSnapshot = {

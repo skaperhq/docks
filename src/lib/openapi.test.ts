@@ -12,9 +12,9 @@ describe("OpenAPI model", () => {
     expect(apiOperations.length).toBeGreaterThan(0)
     expect(apiOperations).toContainEqual(
       expect.objectContaining({
-        id: "POST /auth/login",
+        id: "POST /api/teams",
         method: "POST",
-        path: "/auth/login",
+        path: "/api/teams",
       })
     )
     expect(new Set(apiOperations.map((operation) => operation.id)).size).toBe(
@@ -23,29 +23,31 @@ describe("OpenAPI model", () => {
   })
 
   test("parses custom ws endpoint correctly", () => {
-    const wsOp = apiOperations.find((op) => op.path === "/notifications/ws")
+    const wsOp = apiOperations.find(
+      (op) => op.path === "/api/matches/{matchId}/live"
+    )
     expect(wsOp).toBeDefined()
     expect(wsOp?.method).toBe("WS")
     expect(wsOp?.parameters).toContainEqual(
       expect.objectContaining({
-        name: "token",
-        location: "query",
+        name: "matchId",
+        location: "path",
         required: true,
       })
     )
   })
 
   test("filters operation groups by searchable OpenAPI metadata", () => {
-    const groups = getOperationGroups({ query: "login", requestOnly: false })
+    const groups = getOperationGroups({ query: "team", requestOnly: false })
     const matchingIds = groups.flatMap((group) =>
       group.operations.map((operation) => operation.id)
     )
 
-    expect(matchingIds).toContain("POST /auth/login")
+    expect(matchingIds).toContain("POST /api/teams")
     expect(
       groups.every((group) =>
         group.operations.every((operation) =>
-          operation.searchText.includes("login")
+          operation.searchText.includes("team")
         )
       )
     ).toBe(true)

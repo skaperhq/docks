@@ -5,7 +5,7 @@ Skaper is a self-contained OpenAPI documentation and API request UI for Node.js 
 ## Install
 
 ```bash
-npm install skaper
+npm install @skaper/ui
 ```
 
 Skaper does not require a React component, a CSS import, or static asset hosting in the consuming project.
@@ -14,7 +14,7 @@ Skaper does not require a React component, a CSS import, or static asset hosting
 
 ```ts
 import { Hono } from "hono"
-import { skaperUI } from "skaper"
+import { skaperUI } from "@skaper/ui"
 
 const swagger = new Hono()
 
@@ -31,7 +31,7 @@ app.get("/docs", skaperUI({ url: "/docs/openapi.json" }))
 
 ```ts
 import express from "express"
-import { skaperUI } from "skaper"
+import { skaperUI } from "@skaper/ui"
 
 const app = express()
 
@@ -48,7 +48,7 @@ The relay is opt-in and restricted to explicitly allowed upstream origins. Skape
 
 ```ts
 import express from "express"
-import { createSkaperRelay, skaperUI } from "skaper"
+import { createSkaperRelay, skaperUI } from "@skaper/ui"
 
 const app = express()
 const relay = createSkaperRelay({
@@ -79,7 +79,7 @@ Mount the relay before catch-all raw body parsers. It uses an opaque request bod
 ```ts
 import { serve } from "@hono/node-server"
 import { Hono } from "hono"
-import { createSkaperRelay, skaperUI } from "skaper"
+import { createSkaperRelay, skaperUI } from "@skaper/ui"
 
 const app = new Hono()
 const relay = createSkaperRelay({
