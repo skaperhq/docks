@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
@@ -59,3 +59,18 @@ const commonJsModule = serverModule
 
 await writeFile(resolve(outputDirectory, "index.js"), serverModule)
 await writeFile(resolve(outputDirectory, "index.cjs"), commonJsModule)
+
+await copyFile(
+  resolve(root, "scripts/mcp-runtime.mjs"),
+  resolve(outputDirectory, "mcp.js")
+)
+const mcpCli = await readFile(resolve(root, "scripts/mcp-cli.mjs"), "utf8")
+await writeFile(
+  resolve(outputDirectory, "cli.js"),
+  mcpCli.replace('from "./mcp-runtime.mjs"', 'from "./mcp.js"')
+)
+await writeFile(
+  resolve(outputDirectory, "mcp.cjs"),
+  `"use strict"\n\nexports.createSkaperMcp = async function createSkaperMcp(options) {\n  const runtime = await import("./mcp.js")\n  return runtime.createSkaperMcp(options)\n}\n`
+)
+await chmod(resolve(outputDirectory, "cli.js"), 0o755)

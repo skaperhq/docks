@@ -2,19 +2,48 @@ import assert from "node:assert/strict"
 import crypto from "node:crypto"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
+import { stat } from "node:fs/promises"
 import { WebSocket, WebSocketServer } from "ws"
 import skaperUI, {
   createSkaperRelay,
   skaperUI as namedSkaperUI,
 } from "../dist/package/index.js"
+import { createSkaperMcp } from "../dist/package/mcp.js"
 
 const require = createRequire(import.meta.url)
 const commonJsSkaperUI = require("../dist/package/index.cjs")
+const commonJsMcp = require("../dist/package/mcp.cjs")
 
 assert.equal(skaperUI, namedSkaperUI)
 assert.equal(commonJsSkaperUI, commonJsSkaperUI.skaperUI)
 assert.equal(typeof createSkaperRelay, "function")
 assert.equal(typeof commonJsSkaperUI.createSkaperRelay, "function")
+assert.equal(typeof createSkaperMcp, "function")
+assert.equal(typeof commonJsMcp.createSkaperMcp, "function")
+
+const packageMcp = await createSkaperMcp({
+  openapi: {
+    openapi: "3.1.0",
+    info: { title: "Package MCP", version: "1.0.0" },
+    paths: {},
+  },
+})
+assert.equal(packageMcp.model.info.title, "Package MCP")
+await packageMcp.close()
+
+const commonJsPackageMcp = await commonJsMcp.createSkaperMcp({
+  openapi: {
+    openapi: "3.0.3",
+    info: { title: "CommonJS MCP", version: "1.0.0" },
+    paths: {},
+  },
+})
+assert.equal(commonJsPackageMcp.model.info.title, "CommonJS MCP")
+await commonJsPackageMcp.close()
+
+const cliMode = (await stat(new URL("../dist/package/cli.js", import.meta.url)))
+  .mode
+assert.ok(cliMode & 0o100)
 
 const handler = skaperUI({
   url: "/docs/openapi.json",
