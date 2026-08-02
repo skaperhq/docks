@@ -58,11 +58,14 @@ export async function createSkaperMcp(options) {
   validateOptions(options)
 
   const loaded = await loadOpenApi(options.openapi, options.openapiHeaders)
-  const model = createApiModel(
+  const baseModel = createApiModel(
     loaded.document,
     loaded.rawDocument,
     loaded.location
   )
+  const getModel = async () =>
+    addCustomOperations(baseModel, await loadCustomRequests(options.knowledge))
+  const model = await getModel()
   const execution = normalizeExecutionOptions(options.execution)
   const forwarding = normalizeForwarding(options.clientHeaders?.forward)
   const activeServers = new Set()
@@ -72,6 +75,7 @@ export async function createSkaperMcp(options) {
     const forwardedHeaders = selectForwardedHeaders(incomingHeaders, forwarding)
     const server = buildMcpServer({
       model,
+      getModel,
       options,
       execution,
       forwardedHeaders,
@@ -145,7 +149,13 @@ export async function createSkaperMcp(options) {
   }
 }
 
-function buildMcpServer({ model, options, execution, forwardedHeaders }) {
+function buildMcpServer({
+  model,
+  getModel,
+  options,
+  execution,
+  forwardedHeaders,
+}) {
   const server = new McpServer(
     {
       name: options.name?.trim() || "skaper-api",
@@ -172,7 +182,13 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
         openWorldHint: false,
       },
     },
-    async () => toolSuccess(model.overview, buildOverviewMarkdown(model))
+    async () => {
+      const currentModel = await getModel()
+      return toolSuccess(
+        currentModel.overview,
+        buildOverviewMarkdown(currentModel)
+      )
+    }
   )
 
   server.registerTool(
@@ -195,7 +211,13 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
       },
     },
     async ({ query = "", method, tag, limit = 20 }) => {
-      const results = searchOperations(model, { query, method, tag, limit })
+      const currentModel = await getModel()
+      const results = searchOperations(currentModel, {
+        query,
+        method,
+        tag,
+        limit,
+      })
       return toolSuccess(
         { results, total: results.length },
         results.length
@@ -225,7 +247,8 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
       },
     },
     async ({ operation }) => {
-      const resolved = resolveOperation(model, operation)
+      const currentModel = await getModel()
+      const resolved = resolveOperation(currentModel, operation)
       if (!resolved) {
         return toolError(
           "OPERATION_NOT_FOUND",
@@ -267,8 +290,9 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
     },
     async (input) => {
       try {
+        const currentModel = await getModel()
         const result = await executeOperation({
-          model,
+          model: currentModel,
           operationName: input.operation,
           parameters: input.parameters ?? {},
           contentType: input.contentType,
@@ -304,7 +328,7 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
         {
           uri: uri.toString(),
           mimeType: "text/markdown",
-          text: buildOverviewMarkdown(model),
+          text: buildOverviewMarkdown(await getModel()),
         },
       ],
     })
@@ -333,7 +357,7 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
     "api-operation",
     new ResourceTemplate("skaper://api/operations/{operation}", {
       list: async () => ({
-        resources: model.operations.map((operation) => ({
+        resources: (await getModel()).operations.map((operation) => ({
           uri: `skaper://api/operations/${encodeURIComponent(operation.key)}`,
           name: operation.key,
           title: operation.summary,
@@ -343,7 +367,7 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
       }),
       complete: {
         operation: async (value) =>
-          model.operations
+          (await getModel()).operations
             .map((operation) => operation.key)
             .filter((key) => key.toLowerCase().includes(value.toLowerCase()))
             .slice(0, 20)
@@ -357,7 +381,7 @@ function buildMcpServer({ model, options, execution, forwardedHeaders }) {
     },
     async (uri, variables) => {
       const requested = decodeURIComponent(String(variables.operation ?? ""))
-      const operation = resolveOperation(model, requested)
+      const operation = resolveOperation(await getModel(), requested)
       if (!operation) {
         throw new Error(
           `No API operation matches ${JSON.stringify(requested)}.`
@@ -649,6 +673,7 @@ function createApiModel(document, rawDocument, location) {
         firstServerUrl(pathItem.servers) ??
         firstServerUrl(document.servers)
       const operation = {
+        source: "openapi",
         key,
         operationId,
         method,
@@ -726,10 +751,215 @@ function createApiModel(document, rawDocument, location) {
       authentication: securitySchemes,
       tags,
       operationCount: operations.length,
+      openApiOperationCount: operations.length,
+      customOperationCount: 0,
       executableOperationCount: operations.filter(
         (operation) => operation.executable
       ).length,
     },
+  }
+}
+
+async function loadCustomRequests(knowledge) {
+  if (!knowledge) return []
+  const requests = await knowledge.getCustomRequests()
+  if (!Array.isArray(requests)) {
+    throw new TypeError("knowledge.getCustomRequests() must return an array.")
+  }
+  return requests
+}
+
+function addCustomOperations(baseModel, requests) {
+  if (!requests.length) return baseModel
+  const customOperations = requests
+    .filter((request) => request && typeof request.id === "string")
+    .map(toCustomOperation)
+  const operations = [...baseModel.operations, ...customOperations]
+  const tags = Array.from(
+    new Set([
+      ...baseModel.tags,
+      ...customOperations.flatMap((item) => item.tags),
+    ])
+  )
+  return {
+    ...baseModel,
+    operations,
+    tags,
+    overview: {
+      ...baseModel.overview,
+      tags,
+      operationCount: operations.length,
+      openApiOperationCount: baseModel.operations.length,
+      customOperationCount: customOperations.length,
+      executableOperationCount: operations.filter((item) => item.executable)
+        .length,
+    },
+  }
+}
+
+function toCustomOperation(request) {
+  const method = String(request.method ?? "GET").toUpperCase()
+  const draft = isPlainObject(request.draft) ? request.draft : {}
+  const queryRows = Array.isArray(draft.params) ? draft.params : []
+  const headerRows = Array.isArray(draft.headers) ? draft.headers : []
+  const parameters = [
+    ...queryRows.map((row) => normalizeCustomRow(row, "query")),
+    ...headerRows.map((row) => normalizeCustomRow(row, "header")),
+  ].filter((row) => row.name && row.enabled)
+  const requestBody = normalizeCustomRequestBody(draft.body)
+  const collection = String(request.collectionId ?? "custom")
+  const tags = ["Custom", collection]
+  const key = `custom:${request.id}`
+  const executable =
+    request.transport !== "websocket" &&
+    request.mode !== "sse" &&
+    method !== "WS"
+  const operation = {
+    source: "custom",
+    key,
+    method,
+    path: String(request.url ?? ""),
+    summary: String(request.name ?? key),
+    description: `Workspace custom request in ${collection}.`,
+    tags,
+    parameters,
+    requestBody,
+    responses: [],
+    security: [],
+    securityHeaderNames: new Set([
+      "authorization",
+      "cookie",
+      "proxy-authorization",
+      "x-api-key",
+      "api-key",
+    ]),
+    executable,
+    custom: {
+      url: String(request.url ?? ""),
+      defaultQuery: Object.fromEntries(
+        queryRows
+          .filter((row) => row?.enabled !== false && row?.key)
+          .map((row) => [
+            String(row.key),
+            coerceCustomValue(row.value ?? "", row.type),
+          ])
+      ),
+      defaultBody: getCustomDefaultBody(draft.body),
+    },
+  }
+  operation.searchText = [
+    key,
+    operation.summary,
+    operation.description,
+    method,
+    operation.path,
+    collection,
+    ...parameters.flatMap((parameter) => [
+      parameter.name,
+      parameter.description,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+  return operation
+}
+
+function normalizeCustomRow(row, location) {
+  const value = isPlainObject(row) ? row : {}
+  return {
+    name: String(value.key ?? ""),
+    in: location,
+    description: String(value.description ?? ""),
+    required: location === "query" && value.required === true,
+    schema: {
+      type: normalizeCustomType(value.type),
+      ...(Array.isArray(value.enum) ? { enum: value.enum } : {}),
+      ...(typeof value.pattern === "string" ? { pattern: value.pattern } : {}),
+    },
+    enabled: value.enabled !== false,
+  }
+}
+
+function normalizeCustomType(value) {
+  return ["string", "number", "integer", "boolean", "array", "object"].includes(
+    value
+  )
+    ? value
+    : "string"
+}
+
+function coerceCustomValue(value, type) {
+  if (type === "number" || type === "integer") {
+    const number = Number(value)
+    return Number.isFinite(number) ? number : value
+  }
+  if (type === "boolean") {
+    if (value === "true") return true
+    if (value === "false") return false
+  }
+  if (type === "array" || type === "object") {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+  return value
+}
+
+function normalizeCustomRequestBody(value) {
+  if (!isPlainObject(value) || value.mode === "none" || !value.contentType) {
+    return undefined
+  }
+  return {
+    required: false,
+    description: "Body saved with the workspace custom request.",
+    content: { [String(value.contentType)]: {} },
+  }
+}
+
+function getCustomDefaultBody(value) {
+  if (!isPlainObject(value) || value.mode === "none") return undefined
+  if (value.mode === "raw") {
+    if (String(value.contentType ?? "").includes("json")) {
+      try {
+        return value.value ? JSON.parse(value.value) : undefined
+      } catch {
+        return value.value
+      }
+    }
+    return value.value
+  }
+  if (value.mode === "x-www-form-urlencoded") {
+    return Object.fromEntries(
+      (value.urlEncodedRows ?? [])
+        .filter((row) => row?.enabled !== false && row?.key)
+        .map((row) => [String(row.key), row.value ?? ""])
+    )
+  }
+  if (value.mode === "form-data") {
+    return Object.fromEntries(
+      (value.formDataRows ?? [])
+        .filter((row) => row?.enabled !== false && row?.key && !row?.fileName)
+        .map((row) => [String(row.key), row.value ?? ""])
+    )
+  }
+  if (value.mode === "graphql") {
+    return {
+      query: value.graphqlQuery ?? "",
+      variables: parseOptionalJson(value.graphqlVariables),
+    }
+  }
+  return undefined
+}
+
+function parseOptionalJson(value) {
+  if (!value) return {}
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
   }
 }
 
@@ -788,13 +1018,13 @@ function expandServerUrl(server) {
 }
 
 function searchOperations(model, { query, method, tag, limit }) {
-  const normalizedQuery = query.trim().toLowerCase()
+  const queryTerms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
   const normalizedMethod = method?.trim().toUpperCase()
   const normalizedTag = tag?.trim().toLowerCase()
   return model.operations
     .filter(
       (operation) =>
-        (!normalizedQuery || operation.searchText.includes(normalizedQuery)) &&
+        queryTerms.every((term) => operation.searchText.includes(term)) &&
         (!normalizedMethod || operation.method === normalizedMethod) &&
         (!normalizedTag ||
           operation.tags.some((value) => value.toLowerCase() === normalizedTag))
@@ -815,6 +1045,7 @@ function resolveOperation(model, identifier) {
 
 function toOperationSummary(operation) {
   return {
+    source: operation.source,
     key: operation.key,
     operationId: operation.operationId,
     method: operation.method,
@@ -875,17 +1106,33 @@ async function executeOperation({
     )
   }
 
-  const serverUrl = baseUrl ?? operation.server
-  if (!serverUrl) {
-    throw new SkaperMcpError(
-      "SERVER_NOT_CONFIGURED",
-      "The OpenAPI document does not declare a server. Configure baseUrl to execute operations."
-    )
+  let requestUrl
+  if (operation.source === "custom") {
+    requestUrl = buildCustomOperationUrl(operation, parameters)
+    if (!execution.allowedOrigins.has(requestUrl.origin)) {
+      throw new SkaperMcpError(
+        "ORIGIN_NOT_ALLOWED",
+        `${requestUrl.origin} is not allowed by the MCP host.`
+      )
+    }
+  } else {
+    const serverUrl = baseUrl ?? operation.server
+    if (!serverUrl) {
+      throw new SkaperMcpError(
+        "SERVER_NOT_CONFIGURED",
+        "The OpenAPI document does not declare a server. Configure baseUrl to execute operations."
+      )
+    }
+    const resolvedBase = resolveServerBase(serverUrl, model.location)
+    requestUrl = buildOperationUrl(resolvedBase, operation, parameters)
   }
-  const resolvedBase = resolveServerBase(serverUrl, model.location)
-  const requestUrl = buildOperationUrl(resolvedBase, operation, parameters)
   const documentedHeaders = buildDocumentedHeaders(operation, parameters)
-  const requestBody = buildRequestBody(operation, contentType, body)
+  const effectiveBody =
+    body === undefined && operation.source === "custom"
+      ? operation.custom.defaultBody
+      : body
+  assertNoUnresolvedVariables(effectiveBody)
+  const requestBody = buildRequestBody(operation, contentType, effectiveBody)
   const selectedForwardedHeaders = Object.fromEntries(forwardedHeaders)
   const configuredHeaders = await resolveApiHeaders(apiHeaders, {
     operation: toOperationSummary(operation),
@@ -1043,6 +1290,56 @@ function buildOperationUrl(base, operation, parameters) {
     appendQueryParameter(url.searchParams, parameter, value)
   }
   return url
+}
+
+function buildCustomOperationUrl(operation, parameters) {
+  const rawUrl = operation.custom.url
+  assertNoUnresolvedVariables(rawUrl)
+  let url
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    throw new SkaperMcpError(
+      "INVALID_INPUT",
+      "Custom API requests require an absolute HTTP(S) URL."
+    )
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password
+  ) {
+    throw new SkaperMcpError(
+      "INVALID_INPUT",
+      "Custom API URLs must use HTTP(S) and cannot contain credentials."
+    )
+  }
+  const query = {
+    ...operation.custom.defaultQuery,
+    ...(parameters.query ?? {}),
+  }
+  for (const parameter of operation.parameters.filter(
+    (item) => item.in === "query"
+  )) {
+    const value = query[parameter.name]
+    validateParameterValue(parameter, value)
+    if (value === undefined || value === "") continue
+    assertNoUnresolvedVariables(value)
+    url.searchParams.delete(parameter.name)
+    appendQueryParameter(url.searchParams, parameter, value)
+  }
+  return url
+}
+
+function assertNoUnresolvedVariables(value) {
+  if (value === undefined || value === null) return
+  const serialized = typeof value === "string" ? value : JSON.stringify(value)
+  if (/\{\{[^{}]+\}\}/.test(serialized)) {
+    throw new SkaperMcpError(
+      "UNRESOLVED_VARIABLE",
+      "The custom request contains unresolved workspace variables."
+    )
+  }
 }
 
 function buildDocumentedHeaders(operation, parameters) {
@@ -1473,6 +1770,9 @@ function normalizeExecutionOptions(value = {}) {
   const allowedOperations = new Set(value.allowedOperations ?? [])
   const timeoutMs = value.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxResponseBytes = value.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES
+  const allowedOrigins = new Set(
+    (value.allowedOrigins ?? []).map((origin) => normalizeAllowedOrigin(origin))
+  )
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
     throw new TypeError("execution.timeoutMs must be a positive integer.")
   }
@@ -1481,7 +1781,37 @@ function normalizeExecutionOptions(value = {}) {
       "execution.maxResponseBytes must be a positive integer."
     )
   }
-  return { allowedMethods, allowedOperations, timeoutMs, maxResponseBytes }
+  return {
+    allowedMethods,
+    allowedOperations,
+    allowedOrigins,
+    timeoutMs,
+    maxResponseBytes,
+  }
+}
+
+function normalizeAllowedOrigin(value) {
+  let url
+  try {
+    url = new URL(String(value))
+  } catch {
+    throw new TypeError(
+      "execution.allowedOrigins entries must be HTTP(S) origins."
+    )
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new TypeError(
+      "execution.allowedOrigins entries must be exact HTTP(S) origins."
+    )
+  }
+  return url.origin
 }
 
 function validateOptions(options) {
@@ -1499,6 +1829,15 @@ function validateOptions(options) {
   ) {
     throw new TypeError("mcpBearerToken must be a non-empty string.")
   }
+  if (
+    options.knowledge !== undefined &&
+    (!options.knowledge ||
+      typeof options.knowledge.getCustomRequests !== "function")
+  ) {
+    throw new TypeError(
+      "knowledge must provide an asynchronous getCustomRequests() function."
+    )
+  }
 }
 
 function buildOverviewMarkdown(model) {
@@ -1510,6 +1849,8 @@ function buildOverviewMarkdown(model) {
     `- API version: ${model.info.version}`,
     `- OpenAPI: ${model.overview.openapi}`,
     `- Operations: ${model.operations.length}`,
+    `- OpenAPI operations: ${model.overview.openApiOperationCount}`,
+    `- Custom operations: ${model.overview.customOperationCount}`,
     "",
     "## Servers",
     "",
@@ -1546,6 +1887,7 @@ function buildOperationMarkdown(operation) {
     `**${operation.method}** \`${operation.path}\``,
     "",
     `Canonical key: \`${operation.key}\``,
+    `Source: ${operation.source === "custom" ? "Workspace custom request" : "OpenAPI"}`,
   ]
   if (operation.operationId)
     lines.push(`Operation ID: \`${operation.operationId}\``)
@@ -1692,8 +2034,10 @@ class SkaperMcpError extends Error {
 }
 
 export const __testing = {
+  addCustomOperations,
   createApiModel,
   executeOperation,
+  normalizeExecutionOptions,
   normalizeForwarding,
   selectForwardedHeaders,
   loadOpenApi,

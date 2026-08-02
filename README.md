@@ -10,6 +10,75 @@ npm install @skaper/docks
 
 Skaper does not require a React component, a CSS import, or static asset hosting in the consuming project.
 
+## Bring your own PostgreSQL
+
+Skaper uses browser-scoped IndexedDB by default. To share workspace state and
+custom API knowledge between developers and MCP, initialize any PostgreSQL
+database with the bundled migration command:
+
+```bash
+DATABASE_URL="postgresql://user:password@host/database" \
+  npx @skaper/docks db migrate
+```
+
+Use `--database-url-env SKAPER_DATABASE_URL` to read a differently named
+environment variable, or `--dry-run` to inspect the SQL without connecting.
+Every table is explicitly qualified under the `skaper` schema. PostgreSQL
+requires index names to be unqualified in `CREATE INDEX`; each index targets a
+qualified `skaper` table and is therefore created in that table's schema. The
+migration does not create extensions or alter `public`, other schemas,
+roles, grants, ownership, default privileges, or database settings.
+
+Create one workspace-scoped storage service and reuse it for the UI and MCP:
+
+```ts
+import { Pool } from "pg"
+import { skaperUI } from "@skaper/docks"
+import { createSkaperMcp } from "@skaper/docks/mcp"
+import { createSkaperPostgres } from "@skaper/docks/postgres"
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const postgres = await createSkaperPostgres({
+  pool,
+  workspaceId: "acme-api",
+  path: "/docs/_storage",
+  password: process.env.SKAPER_UI_PASSWORD!,
+  // Set this when TLS terminates at a reverse proxy.
+  origin: "https://api.example.com",
+})
+
+app.all(postgres.path, postgres.handler)
+app.get(
+  "/docs",
+  skaperUI({
+    url: "/openapi.json",
+    workspaceId: "acme-api",
+    storage: postgres,
+  })
+)
+
+const mcp = await createSkaperMcp({
+  openapi: "/openapi.json",
+  knowledge: postgres,
+  execution: {
+    allowedOrigins: ["https://external.example.com"],
+  },
+})
+```
+
+The password is verified on the server using a salted `scrypt` hash stored in
+PostgreSQL. Browser sessions use expiring HttpOnly cookies, and changing the
+configured password invalidates existing sessions. Mount both the docs and
+storage path behind the host application's normal rate limiting and network
+controls. Existing IndexedDB data is not imported automatically.
+
+Custom requests become live MCP knowledge under stable `custom:<request-id>`
+keys. They are included in the existing overview, search, detail, resource, and
+call interfaces. Calls require an allowed method and an exact
+`execution.allowedOrigins` entry. Persisted request headers and environment
+secrets are never exposed or sent by MCP; supply credentials with the existing
+server-side `apiHeaders` or controlled forwarding options.
+
 ## MCP server
 
 Skaper turns an OpenAPI 3.0 or 3.1 document into four stable MCP tools:
@@ -297,7 +366,11 @@ skaperUI({
 
 Skaper serves one complete HTML document. Its browser code and visual styles are embedded in that document, so there is no CSS or JavaScript asset for the host application to import or serve.
 
-Request tabs, environments, variables, saved responses, and response preferences use a workspace-scoped IndexedDB database in the developer's browser. Different repositories do not share data even when they reuse the same localhost origin. No server database or writable filesystem is required.
+Without the optional PostgreSQL configuration, request tabs, environments,
+variables, saved responses, and response preferences use a workspace-scoped
+IndexedDB database in the developer's browser. Different repositories do not
+share data even when they reuse the same localhost origin. No server database
+or writable filesystem is required in this default mode.
 
 ## Development
 

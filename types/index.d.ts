@@ -12,8 +12,15 @@ export type SkaperUIOptions = {
    * Defaults to an identifier derived from the host project and OpenAPI URL.
    */
   workspaceId?: string
+  /** Authenticated PostgreSQL storage returned by createSkaperPostgres(). */
+  storage?: SkaperRemoteStorage
   /** Optional same-origin relay used for cross-origin API traffic. */
   relay?: SkaperRelay
+}
+
+export type SkaperRemoteStorage = {
+  readonly path: string
+  readonly workspaceId: string
 }
 
 export type SkaperRelayTransport = "http" | "websocket"

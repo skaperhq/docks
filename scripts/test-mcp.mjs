@@ -91,6 +91,44 @@ const document = {
   },
 }
 
+let customRequestName = "Workspace status"
+let knowledgeReads = 0
+const knowledge = {
+  async getCustomRequests() {
+    knowledgeReads += 1
+    return [
+      {
+        id: "workspace-status",
+        collectionId: "external-services",
+        name: customRequestName,
+        method: "GET",
+        transport: "http",
+        mode: "standard",
+        url: `${upstreamOrigin}/custom-status`,
+        draft: {
+          params: [
+            {
+              key: "check",
+              value: "ready",
+              description: "Status check",
+              enabled: true,
+            },
+          ],
+          headers: [
+            {
+              key: "Authorization",
+              value: "Bearer persisted-secret",
+              description: "API credential",
+              enabled: true,
+            },
+          ],
+          body: { mode: "none", contentType: "", value: "" },
+        },
+      },
+    ]
+  },
+}
+
 assert.throws(
   () => __testing.normalizeForwarding({ Authorization: "authorization" }),
   /cannot be forwarded/
@@ -114,6 +152,7 @@ const mcpPort = new URL(mcpOrigin).port
 
 const mcp = await createSkaperMcp({
   openapi: document,
+  knowledge,
   mcpBearerToken: "mcp-secret",
   allowedHosts: [`127.0.0.1:${mcpPort}`],
   clientHeaders: {
@@ -123,11 +162,15 @@ const mcp = await createSkaperMcp({
     },
   },
   apiHeaders: async ({ operation, forwardedHeaders }) => {
-    assert.equal(operation.key.startsWith("GET "), true)
+    assert.equal(
+      operation.key.startsWith("GET ") || operation.key.startsWith("custom:"),
+      true
+    )
     assert.equal(forwardedHeaders.authorization, "Bearer upstream-secret")
     assert.equal(forwardedHeaders["x-tenant-id"], "tenant-123")
     return { "x-api-client": "skaper-test", "x-tenant-id": "host-tenant" }
   },
+  execution: { allowedOrigins: [upstreamOrigin] },
 })
 
 const unauthorized = await fetch(`${mcpOrigin}/mcp`, { method: "POST" })
@@ -174,6 +217,57 @@ const search = await client.callTool({
 assert.equal(search.isError, undefined)
 assert.equal(search.structuredContent.results.length, 2)
 
+const customSearch = await client.callTool({
+  name: "search_api",
+  arguments: { query: "Workspace status" },
+})
+assert.equal(customSearch.structuredContent.results.length, 1)
+assert.equal(
+  customSearch.structuredContent.results[0].key,
+  "custom:workspace-status"
+)
+assert.equal(customSearch.structuredContent.results[0].source, "custom")
+
+const multiTermCustomSearch = await client.callTool({
+  name: "search_api",
+  arguments: { query: "external-services GET status" },
+})
+assert.equal(multiTermCustomSearch.structuredContent.results.length, 1)
+assert.equal(
+  multiTermCustomSearch.structuredContent.results[0].key,
+  "custom:workspace-status"
+)
+
+const customDetail = await client.callTool({
+  name: "get_api_operation",
+  arguments: { operation: "custom:workspace-status" },
+})
+assert.equal(customDetail.structuredContent.source, "custom")
+assert.doesNotMatch(JSON.stringify(customDetail), /persisted-secret/)
+
+const deniedCustomModel = __testing.addCustomOperations(
+  __testing.createApiModel(document, document),
+  await knowledge.getCustomRequests()
+)
+await assert.rejects(
+  __testing.executeOperation({
+    model: deniedCustomModel,
+    operationName: "custom:workspace-status",
+    parameters: {},
+    forwardedHeaders: new Headers(),
+    execution: __testing.normalizeExecutionOptions(),
+  }),
+  (error) => error.code === "ORIGIN_NOT_ALLOWED"
+)
+
+customRequestName = "Fresh workspace status"
+const refreshedSearch = await client.callTool({
+  name: "search_api",
+  arguments: { query: "Fresh workspace status" },
+})
+assert.equal(refreshedSearch.structuredContent.results.length, 1)
+assert.ok(knowledgeReads >= 4)
+
 const detail = await client.callTool({
   name: "get_api_operation",
   arguments: { operation: "getEcho" },
@@ -204,6 +298,18 @@ assert.deepEqual(call.structuredContent.body, {
     requestId: "request-1",
   },
 })
+
+const customCall = await client.callTool({
+  name: "call_api",
+  arguments: { operation: "custom:workspace-status" },
+})
+assert.equal(customCall.isError, undefined)
+assert.equal(customCall.structuredContent.body.path, "/custom-status")
+assert.deepEqual(customCall.structuredContent.body.query, { check: "ready" })
+assert.equal(
+  customCall.structuredContent.body.headers.authorization,
+  "Bearer upstream-secret"
+)
 
 const toolCredential = await client.callTool({
   name: "call_api",
@@ -280,6 +386,15 @@ const dryRun = await execFileAsync(process.execPath, [
 assert.match(dryRun.stdout, /"name": "acme-api"/)
 assert.match(dryRun.stdout, /"type": "http"/)
 assert.match(dryRun.stdout, /https:\/\/api\.example\.com\/mcp/)
+
+const databaseDryRun = await execFileAsync(process.execPath, [
+  cliPath,
+  "db",
+  "migrate",
+  "--dry-run",
+])
+assert.match(databaseDryRun.stdout, /CREATE SCHEMA IF NOT EXISTS skaper/)
+assert.doesNotMatch(databaseDryRun.stdout, /\bpublic\s*\./i)
 
 const fakeCodePath = join(tempDirectory, "fake-code.mjs")
 const fakeCodeOutput = join(tempDirectory, "code-arguments.json")

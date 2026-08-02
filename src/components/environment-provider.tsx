@@ -362,7 +362,7 @@ export function EnvironmentProvider({
       <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-foreground">
         <div className="flex flex-col items-center gap-2">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Loading browser storage...</span>
+          <span>Loading workspace…</span>
         </div>
       </div>
     )

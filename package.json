@@ -1,6 +1,6 @@
 {
   "name": "@skaper/docks",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "A self-contained OpenAPI workspace and MCP server for developers and AI agents.",
   "license": "MIT",
   "keywords": [
@@ -31,6 +31,11 @@
       "import": "./dist/package/mcp.js",
       "require": "./dist/package/mcp.cjs"
     },
+    "./postgres": {
+      "types": "./types/postgres.d.ts",
+      "import": "./dist/package/postgres.js",
+      "require": "./dist/package/postgres.cjs"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -47,7 +52,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@types/pg": "^8.20.3",
     "cmdk": "^1.1.1",
+    "pg": "^8.22.0",
     "ws": "^8.21.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
@@ -62,6 +69,7 @@
     "package": "npm pack --cache /tmp/skaper-ui-npm-cache",
     "test:package": "npm run build:package && node scripts/test-package.mjs",
     "test:mcp": "npm run build:package && node scripts/test-mcp.mjs",
+    "test:postgres": "npm run build:package && node scripts/test-postgres.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",

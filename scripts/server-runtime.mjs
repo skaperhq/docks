@@ -129,7 +129,7 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       background: var(--primary);
       color: #ffffff;
       font-size: 0.875rem;
-      font-weight: 500;
+      font-weight: 400;
       box-shadow:
         0 4px 6px -1px rgba(124, 58, 237, 0.1),
         0 2px 4px -1px rgba(124, 58, 237, 0.06);
@@ -144,6 +144,30 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
 
     .skaper-submit-btn:active {
       transform: scale(0.98);
+    }
+
+    .skaper-submit-btn:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .skaper-submit-btn[data-loading="true"]::before {
+      display: inline-block;
+      width: 0.8rem;
+      height: 0.8rem;
+      margin-right: 0.5rem;
+      animation: skaperLoginSpin 0.7s linear infinite;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      vertical-align: -0.12rem;
+      content: "";
+    }
+
+    @keyframes skaperLoginSpin {
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     .skaper-error-message {
@@ -215,7 +239,7 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
             required
           />
         </div>
-        <button type="submit" class="skaper-submit-btn">
+        <button id="skaper-submit-btn" type="submit" class="skaper-submit-btn">
           Unlock Workspace
         </button>
         <div id="skaper-error-message" class="skaper-error-message">
@@ -342,6 +366,21 @@ export function skaperUI(options) {
   }
 
   if (
+    options.storage !== undefined &&
+    (!options.storage || options.storage.__skaperPostgres !== true)
+  ) {
+    throw new TypeError(
+      "skaperUI storage option must come from createSkaperPostgres()."
+    )
+  }
+
+  if (options.storage && options.password !== undefined) {
+    throw new TypeError(
+      "Configure PostgreSQL server-side authentication or the browser-only password, not both."
+    )
+  }
+
+  if (
     options.workspaceId !== undefined &&
     (typeof options.workspaceId !== "string" || !options.workspaceId.trim())
   ) {
@@ -361,6 +400,11 @@ export function skaperUI(options) {
 
   const workspaceId =
     options.workspaceId?.trim() || createDefaultWorkspaceId(options.url)
+  if (options.storage && options.storage.workspaceId !== workspaceId) {
+    throw new TypeError(
+      "skaperUI workspaceId must match the PostgreSQL storage workspaceId."
+    )
+  }
   const hashedPassword = options.password ? sha256(options.password) : null
   const html = renderSkaperHtml(options, hashedPassword, workspaceId)
 
@@ -836,6 +880,9 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
       ? { path: options.relay.path, token: options.relay.token }
       : null
   ).replaceAll("<", "\\u003c")
+  const serializedStoragePath = JSON.stringify(
+    options.storage ? options.storage.path : null
+  ).replaceAll("<", "\\u003c")
   const nonceAttribute = options.nonce
     ? ` nonce="${escapeHtml(options.nonce)}"`
     : ""
@@ -866,7 +913,9 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
         try {
           const openApiUrl = ${url};
           const relay = ${serializedRelay};
+          const storagePath = ${serializedStoragePath};
           globalThis.__SKAPER_RELAY__ = relay;
+          globalThis.__SKAPER_STORAGE_URL__ = storagePath;
           const resolvedOpenApiUrl = new URL(openApiUrl, window.location.href);
           const shouldRelayOpenApi = relay && resolvedOpenApiUrl.origin !== window.location.origin;
           const response = shouldRelayOpenApi
@@ -914,8 +963,11 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
       }
 
       const passwordHash = ${hashedPassword ? JSON.stringify(hashedPassword) : "null"};
+      const remoteStoragePath = ${serializedStoragePath};
 
-      if (passwordHash) {
+      if (remoteStoragePath) {
+        authenticateRemoteStorage();
+      } else if (passwordHash) {
         const isAuthenticated = sessionStorage.getItem(authStorageKey) === passwordHash;
         if (isAuthenticated) {
           loadSkaper();
@@ -946,6 +998,62 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
         }
       } else {
         loadSkaper();
+      }
+
+      async function authenticateRemoteStorage() {
+        const session = await remoteAuthRequest({ action: "session" });
+        if (session.ok) {
+          loadSkaper();
+          return;
+        }
+        const root = document.getElementById("skaper-root");
+        root.innerHTML = ${loginTemplate};
+        const form = document.getElementById("skaper-login-form");
+        const input = document.getElementById("skaper-password-input");
+        const errorMsg = document.getElementById("skaper-error-message");
+        const submit = document.getElementById("skaper-submit-btn");
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (submit.disabled) return;
+          submit.disabled = true;
+          submit.dataset.loading = "true";
+          submit.textContent = "Unlocking…";
+          errorMsg.style.display = "none";
+          try {
+            const result = await remoteAuthRequest({
+              action: "login",
+              password: input.value,
+            });
+            if (result.ok) {
+              root.innerHTML = "";
+              loadSkaper();
+              return;
+            }
+            errorMsg.style.display = "block";
+            errorMsg.classList.remove("skaper-shake");
+            void errorMsg.offsetWidth;
+            errorMsg.classList.add("skaper-shake");
+            input.value = "";
+            input.focus();
+          } finally {
+            submit.disabled = false;
+            submit.dataset.loading = "false";
+            submit.textContent = "Unlock Workspace";
+          }
+        });
+      }
+
+      async function remoteAuthRequest(payload) {
+        try {
+          return await fetch(remoteStoragePath, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } catch {
+          return { ok: false };
+        }
       }
     </script>
   </body>

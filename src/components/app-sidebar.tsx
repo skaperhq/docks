@@ -8,6 +8,7 @@ import {
   Container,
   FolderClosedIcon,
   HomeIcon,
+  LoaderCircleIcon,
   PlugIcon,
   PlusIcon,
   RadioTowerIcon,
@@ -70,6 +71,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   savedResponses: SavedResponseSummary[]
   customRequests: PersistedCustomRequest[]
   selectedSavedResponseId?: string | null
+  loadingSavedResponseId?: string | null
   selectedRequestId?: string | null
   activePage?: "workspace" | "environment"
   onSelectOverview: () => void
@@ -93,6 +95,7 @@ export function AppSidebar({
   savedResponses,
   customRequests,
   selectedSavedResponseId,
+  loadingSavedResponseId,
   selectedRequestId,
   activePage = "workspace",
   onSelectOverview,
@@ -109,6 +112,7 @@ export function AppSidebar({
     useEnvironment()
   const isOverviewRoute = activePage === "workspace"
   const [requestDialogOpen, setRequestDialogOpen] = React.useState(false)
+  const [isCreatingRequest, setIsCreatingRequest] = React.useState(false)
   const [newRequestName, setNewRequestName] = React.useState("")
   const [newRequestUrl, setNewRequestUrl] = React.useState("")
   const [newRequestMethod, setNewRequestMethod] =
@@ -363,14 +367,20 @@ export function AppSidebar({
                 selectedOperationId={selectedOperationId}
                 savedResponsesByOperation={savedResponsesByOperation}
                 selectedSavedResponseId={selectedSavedResponseId}
+                loadingSavedResponseId={loadingSavedResponseId}
                 onSelectOperation={onSelectOperation}
                 onSelectSavedResponse={onSelectSavedResponse}
                 onDeleteSavedResponse={onDeleteSavedResponse}
               />
             }
             customRequests={customRequestsByGroup.http}
+            savedResponsesByOperation={savedResponsesByOperation}
             selectedRequestId={selectedRequestId}
+            selectedSavedResponseId={selectedSavedResponseId}
+            loadingSavedResponseId={loadingSavedResponseId}
             onSelectCustomRequest={onSelectCustomRequest}
+            onSelectSavedResponse={onSelectSavedResponse}
+            onDeleteSavedResponse={onDeleteSavedResponse}
             onDeleteCustomRequest={onDeleteCustomRequest}
           />
           <TransportSection
@@ -390,14 +400,20 @@ export function AppSidebar({
                 selectedOperationId={selectedOperationId}
                 savedResponsesByOperation={savedResponsesByOperation}
                 selectedSavedResponseId={selectedSavedResponseId}
+                loadingSavedResponseId={loadingSavedResponseId}
                 onSelectOperation={onSelectOperation}
                 onSelectSavedResponse={onSelectSavedResponse}
                 onDeleteSavedResponse={onDeleteSavedResponse}
               />
             }
             customRequests={customRequestsByGroup.sse}
+            savedResponsesByOperation={savedResponsesByOperation}
             selectedRequestId={selectedRequestId}
+            selectedSavedResponseId={selectedSavedResponseId}
+            loadingSavedResponseId={loadingSavedResponseId}
             onSelectCustomRequest={onSelectCustomRequest}
+            onSelectSavedResponse={onSelectSavedResponse}
+            onDeleteSavedResponse={onDeleteSavedResponse}
             onDeleteCustomRequest={onDeleteCustomRequest}
           />
           <TransportSection
@@ -418,6 +434,7 @@ export function AppSidebar({
                   selectedOperationId={selectedOperationId}
                   savedResponsesByOperation={savedResponsesByOperation}
                   selectedSavedResponseId={selectedSavedResponseId}
+                  loadingSavedResponseId={loadingSavedResponseId}
                   onSelectOperation={onSelectOperation}
                   onSelectSavedResponse={onSelectSavedResponse}
                   onDeleteSavedResponse={onDeleteSavedResponse}
@@ -427,8 +444,13 @@ export function AppSidebar({
               )
             }
             customRequests={customRequestsByGroup.websocket}
+            savedResponsesByOperation={savedResponsesByOperation}
             selectedRequestId={selectedRequestId}
+            selectedSavedResponseId={selectedSavedResponseId}
+            loadingSavedResponseId={loadingSavedResponseId}
             onSelectCustomRequest={onSelectCustomRequest}
+            onSelectSavedResponse={onSelectSavedResponse}
+            onDeleteSavedResponse={onDeleteSavedResponse}
             onDeleteCustomRequest={onDeleteCustomRequest}
           />
         </SidebarGroup>
@@ -437,7 +459,12 @@ export function AppSidebar({
         <ThemeToggle />
       </SidebarFooter>
       <SidebarRail />
-      <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
+      <Dialog
+        open={requestDialogOpen}
+        onOpenChange={(open) => {
+          if (!isCreatingRequest || open) setRequestDialogOpen(open)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Request</DialogTitle>
@@ -449,23 +476,27 @@ export function AppSidebar({
             className="flex flex-col gap-3"
             onSubmit={async (event) => {
               event.preventDefault()
-              if (!newRequestName.trim()) return
-              const request = await onCreateCustomRequest({
-                name: newRequestName.trim(),
-                method: newRequestMethod,
-                transport: newRequestTransport,
-                mode: newRequestMode,
-                url: newRequestUrl.trim(),
-              })
-              if (request) {
+              if (!newRequestName.trim() || isCreatingRequest) return
+              setIsCreatingRequest(true)
+              try {
+                const request = await onCreateCustomRequest({
+                  name: newRequestName.trim(),
+                  method: newRequestMethod,
+                  transport: newRequestTransport,
+                  mode: newRequestMode,
+                  url: newRequestUrl.trim(),
+                })
+                if (!request) return
                 onSelectCustomRequest(request)
+                setNewRequestName("")
+                setNewRequestUrl("")
+                setNewRequestMethod("GET")
+                setNewRequestTransport("http")
+                setNewRequestMode("standard")
+                setRequestDialogOpen(false)
+              } finally {
+                setIsCreatingRequest(false)
               }
-              setNewRequestName("")
-              setNewRequestUrl("")
-              setNewRequestMethod("GET")
-              setNewRequestTransport("http")
-              setNewRequestMode("standard")
-              setRequestDialogOpen(false)
             }}
           >
             <Input
@@ -547,8 +578,14 @@ export function AppSidebar({
               }
             />
             <DialogFooter>
-              <Button type="submit" disabled={!newRequestName.trim()}>
-                Create
+              <Button
+                type="submit"
+                disabled={!newRequestName.trim() || isCreatingRequest}
+              >
+                {isCreatingRequest ? (
+                  <LoaderCircleIcon className="animate-spin" />
+                ) : null}
+                {isCreatingRequest ? "Creating…" : "Create"}
               </Button>
             </DialogFooter>
           </form>
@@ -566,8 +603,13 @@ function TransportSection({
   onOpenChange,
   openApiContent,
   customRequests,
+  savedResponsesByOperation,
   selectedRequestId,
+  selectedSavedResponseId,
+  loadingSavedResponseId,
   onSelectCustomRequest,
+  onSelectSavedResponse,
+  onDeleteSavedResponse,
   onDeleteCustomRequest,
 }: {
   label: string
@@ -577,8 +619,13 @@ function TransportSection({
   onOpenChange: (open: boolean) => void
   openApiContent: React.ReactNode
   customRequests: PersistedCustomRequest[]
+  savedResponsesByOperation: Map<string, SavedResponseSummary[]>
   selectedRequestId?: string | null
+  selectedSavedResponseId?: string | null
+  loadingSavedResponseId?: string | null
   onSelectCustomRequest: (request: PersistedCustomRequest) => void
+  onSelectSavedResponse: (response: SavedResponseSummary) => void
+  onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
 }) {
   return (
@@ -620,7 +667,14 @@ function TransportSection({
                     isActive={
                       selectedRequestId === getCustomRequestKey(request.id)
                     }
+                    savedResponses={savedResponsesByOperation.get(
+                      getCustomRequestKey(request.id)
+                    )}
+                    selectedSavedResponseId={selectedSavedResponseId}
+                    loadingSavedResponseId={loadingSavedResponseId}
                     onSelectCustomRequest={onSelectCustomRequest}
+                    onSelectSavedResponse={onSelectSavedResponse}
+                    onDeleteSavedResponse={onDeleteSavedResponse}
                     onDeleteCustomRequest={onDeleteCustomRequest}
                   />
                 ))
@@ -677,6 +731,7 @@ function OpenApiRequestTree({
   selectedOperationId,
   savedResponsesByOperation,
   selectedSavedResponseId,
+  loadingSavedResponseId,
   onSelectOperation,
   onSelectSavedResponse,
   onDeleteSavedResponse,
@@ -685,6 +740,7 @@ function OpenApiRequestTree({
   selectedOperationId: string | null
   savedResponsesByOperation: Map<string, SavedResponseSummary[]>
   selectedSavedResponseId?: string | null
+  loadingSavedResponseId?: string | null
   onSelectOperation: (operation: ApiOperation) => void
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
@@ -728,6 +784,7 @@ function OpenApiRequestTree({
                         operation.id
                       )}
                       selectedSavedResponseId={selectedSavedResponseId}
+                      loadingSavedResponseId={loadingSavedResponseId}
                       onSelectOperation={onSelectOperation}
                       onSelectSavedResponse={onSelectSavedResponse}
                       onDeleteSavedResponse={onDeleteSavedResponse}
@@ -760,21 +817,62 @@ function EmptyProtocolFolder({ label }: { label: string }) {
 function CustomRequestItem({
   request,
   isActive,
+  savedResponses,
+  selectedSavedResponseId,
+  loadingSavedResponseId,
   onSelectCustomRequest,
+  onSelectSavedResponse,
+  onDeleteSavedResponse,
   onDeleteCustomRequest,
 }: {
   request: PersistedCustomRequest
   isActive: boolean
+  savedResponses?: SavedResponseSummary[]
+  selectedSavedResponseId?: string | null
+  loadingSavedResponseId?: string | null
   onSelectCustomRequest: (request: PersistedCustomRequest) => void
+  onSelectSavedResponse: (response: SavedResponseSummary) => void
+  onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
 }) {
-  return (
+  const savedResponseItems = savedResponses ?? []
+  const savedResponseIsActive = savedResponseItems.some(
+    (response) => response.id === selectedSavedResponseId
+  )
+  const [savedResponseOpen, setSavedResponseOpen] = React.useState(
+    Boolean(
+      savedResponseItems.length > 0 && (isActive || savedResponseIsActive)
+    )
+  )
+
+  React.useEffect(() => {
+    if (savedResponseItems.length > 0 && (isActive || savedResponseIsActive)) {
+      setSavedResponseOpen(true)
+    }
+  }, [isActive, savedResponseItems.length, savedResponseIsActive])
+
+  const requestRow = (
     <div
       className={cn(
         "group/custom-request flex min-h-8 w-full items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+        isActive &&
+          !savedResponseIsActive &&
+          "bg-sidebar-accent text-sidebar-accent-foreground"
       )}
     >
+      {savedResponseItems.length > 0 ? (
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`${savedResponseOpen ? "Collapse" : "Expand"} saved responses for ${request.name}`}
+            className="size-5 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent"
+          >
+            <ChevronRightIcon className="transition-transform group-data-[state=open]/custom-request-item:rotate-90" />
+          </Button>
+        </CollapsibleTrigger>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -819,6 +917,70 @@ function CustomRequestItem({
       </Button>
     </div>
   )
+
+  if (savedResponseItems.length === 0) {
+    return requestRow
+  }
+
+  return (
+    <Collapsible
+      open={savedResponseOpen}
+      onOpenChange={setSavedResponseOpen}
+      className="group/custom-request-item"
+    >
+      {requestRow}
+      <CollapsibleContent>
+        <div className="ml-2 flex flex-col gap-0.5 border-l border-sidebar-border/80 py-1 pl-3">
+          {savedResponseItems.map((savedResponse) => {
+            const responseIsActive =
+              savedResponse.id === selectedSavedResponseId
+
+            return (
+              <div
+                key={savedResponse.id}
+                className={cn(
+                  "group/response flex min-h-8 items-center gap-1 rounded-md py-1 pr-1 pl-2 transition-colors",
+                  responseIsActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  aria-label={`Open saved response ${savedResponse.name}`}
+                  onClick={() => onSelectSavedResponse(savedResponse)}
+                  disabled={loadingSavedResponseId === savedResponse.id}
+                  className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-0 py-0 font-normal hover:bg-transparent"
+                >
+                  {loadingSavedResponseId === savedResponse.id ? (
+                    <LoaderCircleIcon className="animate-spin" />
+                  ) : (
+                    <span className="inline-flex h-4 shrink-0 items-center rounded-xs border border-sidebar-foreground/50 px-0.5 text-[10px] leading-none font-semibold text-sidebar-foreground/70">
+                      {savedResponse.status}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[12px]">
+                    {savedResponse.name}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Delete saved response ${savedResponse.name}`}
+                  onClick={() => onDeleteSavedResponse(savedResponse)}
+                  className="shrink-0 text-sidebar-foreground/50 opacity-0 group-hover/response:opacity-100 hover:bg-sidebar-accent hover:text-destructive focus-visible:opacity-100"
+                >
+                  <Trash2Icon />
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
 }
 
 function OperationItem({
@@ -826,6 +988,7 @@ function OperationItem({
   isActive,
   savedResponses,
   selectedSavedResponseId,
+  loadingSavedResponseId,
   onSelectOperation,
   onSelectSavedResponse,
   onDeleteSavedResponse,
@@ -834,6 +997,7 @@ function OperationItem({
   isActive: boolean
   savedResponses?: SavedResponseSummary[]
   selectedSavedResponseId?: string | null
+  loadingSavedResponseId?: string | null
   onSelectOperation: (operation: ApiOperation) => void
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
@@ -950,12 +1114,18 @@ function OperationItem({
                 <Button
                   type="button"
                   variant="ghost"
+                  aria-label={`Open saved response ${savedResponse.name}`}
                   onClick={() => onSelectSavedResponse(savedResponse)}
+                  disabled={loadingSavedResponseId === savedResponse.id}
                   className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-0 py-0 font-normal hover:bg-transparent"
                 >
-                  <span className="inline-flex h-4 shrink-0 items-center rounded-xs border border-sidebar-foreground/50 px-0.5 text-[10px] leading-none font-semibold text-sidebar-foreground/70">
-                    {savedResponse.status}
-                  </span>
+                  {loadingSavedResponseId === savedResponse.id ? (
+                    <LoaderCircleIcon className="size-3.5 animate-spin" />
+                  ) : (
+                    <span className="inline-flex h-4 shrink-0 items-center rounded-xs border border-sidebar-foreground/50 px-0.5 text-[10px] leading-none font-semibold text-sidebar-foreground/70">
+                      {savedResponse.status}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 truncate text-[12px]">
                     {savedResponse.name}
                   </span>

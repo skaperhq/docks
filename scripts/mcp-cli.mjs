@@ -4,11 +4,21 @@ import { createServer } from "node:http"
 import { spawn } from "node:child_process"
 import process from "node:process"
 import { createSkaperMcp } from "./mcp-runtime.mjs"
+import { migrateSkaperPostgres } from "./postgres-runtime.mjs"
 
 const [command, ...args] = process.argv.slice(2)
 
 if (command === "add" || command === "connect") {
   await addToClient(args)
+  process.exit(0)
+}
+
+if (command === "db") {
+  try {
+    await runDatabaseCommand(args)
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error))
+  }
   process.exit(0)
 }
 
@@ -70,6 +80,7 @@ const allowedMethods = parsed.repeated["allow-method"].length
   ? parsed.repeated["allow-method"]
   : undefined
 const allowedOperations = parsed.repeated["allow-operation"]
+const allowedOrigins = parsed.repeated["allow-origin"]
 const allowedHosts = buildAllowedHosts(host, port)
 
 let mcp
@@ -87,6 +98,7 @@ try {
     execution: {
       ...(allowedMethods ? { allowedMethods } : {}),
       allowedOperations,
+      allowedOrigins,
       ...(parsed.values.timeout
         ? {
             timeoutMs: parsePositiveInteger(parsed.values.timeout, "--timeout"),
@@ -146,6 +158,7 @@ function parseArguments(values) {
   const repeated = {
     "allow-method": [],
     "allow-operation": [],
+    "allow-origin": [],
     "api-header-env": [],
     "forward-header": [],
     "spec-header-env": [],
@@ -223,6 +236,60 @@ function parsePositiveInteger(value, option) {
   if (!Number.isInteger(parsed) || parsed <= 0)
     fail(`${option} must be a positive integer.`)
   return parsed
+}
+
+async function runDatabaseCommand(values) {
+  if (values.includes("--help") || values.includes("-h")) {
+    printDatabaseHelp()
+    return
+  }
+  const [subcommand, ...options] = values
+  if (subcommand !== "migrate") {
+    fail("Usage: skaper db migrate [options]")
+  }
+  let environmentName = "DATABASE_URL"
+  let dryRun = false
+  for (let index = 0; index < options.length; index += 1) {
+    const option = options[index]
+    if (option === "--dry-run") {
+      dryRun = true
+      continue
+    }
+    if (option === "--database-url-env") {
+      const next = options[index + 1]
+      if (!next || next.startsWith("--")) fail(`${option} requires a value.`)
+      environmentName = next
+      index += 1
+      continue
+    }
+    fail(`Unknown option: ${option}`)
+  }
+
+  if (dryRun) {
+    const result = await migrateSkaperPostgres({
+      client: { query() {} },
+      dryRun: true,
+    })
+    process.stdout.write(`${result.sql.trim()}\n`)
+    return
+  }
+
+  const connectionString = process.env[environmentName]
+  if (!connectionString) {
+    fail(`Missing PostgreSQL connection string in ${environmentName}.`)
+  }
+  const pg = await import("pg")
+  const pool = new pg.Pool({ connectionString })
+  try {
+    const result = await migrateSkaperPostgres({ client: pool })
+    process.stdout.write(
+      result.applied.length
+        ? `Applied Skaper migrations: ${result.applied.join(", ")}\n`
+        : "Skaper database is already up to date.\n"
+    )
+  } finally {
+    await pool.end()
+  }
 }
 
 function normalizePath(value) {
@@ -373,7 +440,7 @@ function runCommand(commandName, commandArgs) {
 
 function printHelp() {
   process.stdout.write(
-    `Skaper\n\nUsage:\n  skaper add vscode <mcp-url> [options]\n  skaper mcp <openapi-url-or-file> [options]\n\nRun "skaper add --help" or "skaper mcp --help" for command options.\n`
+    `Skaper\n\nUsage:\n  skaper add vscode <mcp-url> [options]\n  skaper mcp <openapi-url-or-file> [options]\n  skaper db migrate [options]\n\nRun a command with --help for its options.\n`
   )
 }
 
@@ -385,7 +452,13 @@ function printAddHelp() {
 
 function printMcpHelp() {
   process.stdout.write(
-    `Skaper MCP\n\nUsage:\n  skaper mcp <openapi-url-or-file> [options]\n\nOptions:\n  --transport <stdio|http>       Transport (default: stdio)\n  --host <host>                  HTTP host (default: 127.0.0.1)\n  --port <port>                  HTTP port (default: 3210)\n  --path <path>                  MCP route (default: /mcp)\n  --base-url <url>               Override the OpenAPI server URL\n  --mcp-token-env <name>         Read the MCP bearer token from an environment variable\n  --forward-header <from=to>     Allow and optionally rename a client header\n  --api-header-env <name=env>    Read an upstream API header from an environment variable\n  --spec-header-env <name=env>   Read an OpenAPI-fetch header from an environment variable\n  --allow-method <method>        Allow an HTTP method (repeatable)\n  --allow-operation <id>         Allow an operationId or METHOD /path (repeatable)\n  --timeout <milliseconds>       Upstream timeout (default: 30000)\n  --max-response-bytes <bytes>   Response limit (default: 1048576)\n  --allow-unauthenticated        Permit a non-loopback HTTP server without a token\n`
+    `Skaper MCP\n\nUsage:\n  skaper mcp <openapi-url-or-file> [options]\n\nOptions:\n  --transport <stdio|http>       Transport (default: stdio)\n  --host <host>                  HTTP host (default: 127.0.0.1)\n  --port <port>                  HTTP port (default: 3210)\n  --path <path>                  MCP route (default: /mcp)\n  --base-url <url>               Override the OpenAPI server URL\n  --mcp-token-env <name>         Read the MCP bearer token from an environment variable\n  --forward-header <from=to>     Allow and optionally rename a client header\n  --api-header-env <name=env>    Read an upstream API header from an environment variable\n  --spec-header-env <name=env>   Read an OpenAPI-fetch header from an environment variable\n  --allow-method <method>        Allow an HTTP method (repeatable)\n  --allow-operation <id>         Allow an operationId or canonical key (repeatable)\n  --allow-origin <origin>        Allow an exact custom API origin (repeatable)\n  --timeout <milliseconds>       Upstream timeout (default: 30000)\n  --max-response-bytes <bytes>   Response limit (default: 1048576)\n  --allow-unauthenticated        Permit a non-loopback HTTP server without a token\n`
+  )
+}
+
+function printDatabaseHelp() {
+  process.stdout.write(
+    `Skaper PostgreSQL migrations\n\nUsage:\n  skaper db migrate [options]\n\nOptions:\n  --database-url-env <name>  Connection-string environment variable (default: DATABASE_URL)\n  --dry-run                  Print the qualified Skaper SQL without connecting\n`
   )
 }
 

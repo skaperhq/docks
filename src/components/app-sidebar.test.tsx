@@ -71,4 +71,65 @@ describe("AppSidebar", () => {
       screen.getByText("HTTP").closest("button")?.getAttribute("data-state")
     ).toBe("open")
   })
+
+  test("shows saved responses beneath a custom request", () => {
+    const onSelectSavedResponse = vi.fn()
+    const customRequest = {
+      id: "custom-1",
+      collectionId: "http-custom",
+      name: "Create player",
+      method: "POST" as const,
+      transport: "http" as const,
+      mode: "standard" as const,
+      url: "https://example.com/players",
+      draft: {
+        params: [],
+        headers: [],
+        body: { mode: "none", contentType: "", value: "" },
+      },
+      position: 0,
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+    }
+    const savedResponse = {
+      id: "response-1",
+      operationId: "custom:custom-1",
+      method: "POST",
+      path: "https://example.com/players",
+      name: "Created player",
+      status: 201,
+      ok: true,
+      durationMs: 24,
+      sizeBytes: 42,
+      contentType: "application/json",
+      createdAt: "2026-08-02T00:01:00.000Z",
+    }
+
+    render(
+      <SidebarProvider>
+        <AppSidebar
+          activePage="workspace"
+          selectedOperationId={null}
+          selectedRequestId="custom:custom-1"
+          savedResponses={[savedResponse]}
+          customRequests={[customRequest]}
+          onSelectOverview={vi.fn()}
+          onSelectEnvironment={vi.fn()}
+          onSelectOperation={vi.fn()}
+          onSelectSavedResponse={onSelectSavedResponse}
+          onDeleteSavedResponse={vi.fn()}
+          onDeleteCustomRequest={vi.fn()}
+          onCreateCustomRequest={async () => null}
+          onSelectCustomRequest={vi.fn()}
+        />
+      </SidebarProvider>
+    )
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open saved response Created player",
+      })
+    )
+    expect(onSelectSavedResponse).toHaveBeenCalledWith(savedResponse)
+  })
 })

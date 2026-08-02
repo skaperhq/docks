@@ -9,10 +9,15 @@ import skaperUI, {
   skaperUI as namedSkaperUI,
 } from "../dist/package/index.js"
 import { createSkaperMcp } from "../dist/package/mcp.js"
+import {
+  createSkaperPostgres,
+  migrateSkaperPostgres,
+} from "../dist/package/postgres.js"
 
 const require = createRequire(import.meta.url)
 const commonJsSkaperUI = require("../dist/package/index.cjs")
 const commonJsMcp = require("../dist/package/mcp.cjs")
+const commonJsPostgres = require("../dist/package/postgres.cjs")
 
 assert.equal(skaperUI, namedSkaperUI)
 assert.equal(commonJsSkaperUI, commonJsSkaperUI.skaperUI)
@@ -20,6 +25,20 @@ assert.equal(typeof createSkaperRelay, "function")
 assert.equal(typeof commonJsSkaperUI.createSkaperRelay, "function")
 assert.equal(typeof createSkaperMcp, "function")
 assert.equal(typeof commonJsMcp.createSkaperMcp, "function")
+assert.equal(typeof createSkaperPostgres, "function")
+assert.equal(typeof migrateSkaperPostgres, "function")
+assert.equal(typeof commonJsPostgres.createSkaperPostgres, "function")
+assert.equal(typeof commonJsPostgres.createPostgresStorageAdapter, "function")
+assert.equal(typeof commonJsPostgres.migrateSkaperPostgres, "function")
+
+const migrationDryRun = await migrateSkaperPostgres({
+  client: { query() {} },
+  dryRun: true,
+})
+assert.match(
+  migrationDryRun.sql,
+  /CREATE TABLE IF NOT EXISTS skaper\.custom_requests/
+)
 
 const packageMcp = await createSkaperMcp({
   openapi: {

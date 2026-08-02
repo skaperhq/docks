@@ -5,6 +5,7 @@ export type SkaperOpenApiDocument = Record<string, unknown>
 export type SkaperOpenApiSource = string | URL | SkaperOpenApiDocument
 
 export type SkaperOperationSummary = {
+  source: "openapi" | "custom"
   key: string
   operationId?: string
   method: string
@@ -50,11 +51,17 @@ export type SkaperMcpOptions = {
   ) => boolean | Response | Promise<boolean | Response>
   /** Optional exact Host header allowlist enabling DNS-rebinding protection. */
   allowedHosts?: string[]
+  /** Live custom API knowledge source, such as createSkaperPostgres(). */
+  knowledge?: {
+    getCustomRequests: () => Promise<unknown[]>
+  }
   execution?: {
     /** Replaces the default GET, HEAD, OPTIONS allowlist. */
     allowedMethods?: string[]
     /** Additional allowed operationIds or canonical METHOD /path keys. */
     allowedOperations?: string[]
+    /** Exact HTTP(S) origins permitted for workspace custom requests. */
+    allowedOrigins?: string[]
     /** Upstream timeout in milliseconds. Defaults to 30000. */
     timeoutMs?: number
     /** Maximum returned response bytes. Defaults to 1048576. */

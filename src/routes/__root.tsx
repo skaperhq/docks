@@ -7,6 +7,10 @@ import { ThemeProvider } from "../components/theme-provider"
 import { EnvironmentProvider } from "../components/environment-provider"
 import { createIndexedDbStorageAdapter } from "../lib/indexed-db-storage"
 import {
+  createHttpStorageAdapter,
+  getRuntimeStorageUrl,
+} from "../lib/http-storage"
+import {
   isDocksStorageAdapterConfigured,
   setDocksStorageAdapter,
 } from "../lib/storage-adapter"
@@ -14,7 +18,12 @@ import { getRuntimeWorkspaceId, getWorkspaceStorageKey } from "../lib/workspace"
 
 const workspaceId = getRuntimeWorkspaceId()
 if (!isDocksStorageAdapterConfigured()) {
-  setDocksStorageAdapter(createIndexedDbStorageAdapter(workspaceId))
+  const storageUrl = getRuntimeStorageUrl()
+  setDocksStorageAdapter(
+    storageUrl
+      ? createHttpStorageAdapter(storageUrl)
+      : createIndexedDbStorageAdapter(workspaceId)
+  )
 }
 
 export const Route = createRootRoute({

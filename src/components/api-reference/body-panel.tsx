@@ -85,7 +85,7 @@ export function BodyPanel({
             >
               <SelectTrigger
                 aria-label="Raw body type"
-                className="h-8 w-32 border-0 bg-transparent px-0 text-blue-500 shadow-none"
+                className="h-8 w-32 border-0 bg-muted px-2 py-1 text-foreground shadow-none"
               >
                 <SelectValue />
               </SelectTrigger>

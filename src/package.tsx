@@ -7,6 +7,10 @@ import { ThemeProvider } from "./components/theme-provider"
 import type { Theme } from "./components/theme-context"
 import { createIndexedDbStorageAdapter } from "./lib/indexed-db-storage"
 import {
+  createHttpStorageAdapter,
+  getRuntimeStorageUrl,
+} from "./lib/http-storage"
+import {
   isDocksStorageAdapterConfigured,
   setDocksStorageAdapter,
 } from "./lib/storage-adapter"
@@ -43,7 +47,12 @@ export function SkaperApp({
   if (storageAdapter) {
     setDocksStorageAdapter(storageAdapter)
   } else if (!isDocksStorageAdapterConfigured()) {
-    setDocksStorageAdapter(createIndexedDbStorageAdapter(workspaceId))
+    const storageUrl = getRuntimeStorageUrl()
+    setDocksStorageAdapter(
+      storageUrl
+        ? createHttpStorageAdapter(storageUrl)
+        : createIndexedDbStorageAdapter(workspaceId)
+    )
   }
 
   function selectOperation(nextOperationId?: string) {

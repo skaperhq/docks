@@ -41,6 +41,7 @@ import type { LucideIcon } from "lucide-react"
 import {
   ArrowLeftRightIcon,
   ArrowRightIcon,
+  LoaderCircleIcon,
   LockIcon,
   ServerIcon,
   Settings2Icon,
@@ -207,6 +208,9 @@ export function WorkspacePage({
   )
   const [workspaceLoaded, setWorkspaceLoaded] = React.useState(false)
   const [isSavingResponse, setIsSavingResponse] = React.useState(false)
+  const [loadingSavedResponseId, setLoadingSavedResponseId] = React.useState<
+    string | null
+  >(null)
   const [responseStateByOperationId, setResponseStateByOperationId] =
     React.useState<ResponseStateMap>({})
   const [
@@ -216,6 +220,23 @@ export function WorkspacePage({
   const [requestSnapshotByOperationId, setRequestSnapshotByOperationId] =
     React.useState<Partial<Record<string, SavedRequestSnapshot>>>({})
   const activeStreamRef = React.useRef<ActiveStream | null>(null)
+  const persistedRequestTabsRef = React.useRef(new Map<string, string>())
+  const pendingRequestTabsRef = React.useRef(
+    new Map<
+      string,
+      {
+        fingerprint: string
+        data: Parameters<typeof upsertRequestTab>[0]["data"]
+      }
+    >()
+  )
+  const savingRequestTabsRef = React.useRef(new Set<string>())
+  const persistedCustomRequestsRef = React.useRef(new Map<string, string>())
+  const pendingCustomRequestsRef = React.useRef(
+    new Map<string, { fingerprint: string; request: PersistedCustomRequest }>()
+  )
+  const savingCustomRequestsRef = React.useRef(new Set<string>())
+  const savedResponseLoadRef = React.useRef(0)
   const selectedOperation = operationId
     ? apiOperations.find((operation) => operation.id === operationId)
     : undefined
@@ -455,25 +476,34 @@ export function WorkspacePage({
             ? [...nextOpenOperationIds, initialSelectedId]
             : nextOpenOperationIds
         )
-        setRequestDrafts(
-          Object.fromEntries(
-            validRequestTabs.map((tab) => {
-              const operation = apiOperations.find(
-                (item) => item.id === tab.operationId
-              )
-              const draft = operation
-                ? normalizeOperationRequestDraft(operation, tab.draft)
-                : tab.draft
-
-              return [
-                tab.operationId,
-                {
-                  ...draft,
-                  headers: restoreGeneratedHeaderTemplates(draft.headers),
-                },
-              ]
-            })
+        const restoredDraftEntries = validRequestTabs.map((tab) => {
+          const operation = apiOperations.find(
+            (item) => item.id === tab.operationId
           )
+          const draft = operation
+            ? normalizeOperationRequestDraft(operation, tab.draft)
+            : tab.draft
+
+          return [
+            tab.operationId,
+            {
+              ...draft,
+              headers: restoreGeneratedHeaderTemplates(draft.headers),
+            },
+          ] as const
+        })
+        const restoredDrafts = Object.fromEntries(restoredDraftEntries)
+        setRequestDrafts(restoredDrafts)
+        persistedRequestTabsRef.current = new Map(
+          validRequestTabs.map((tab, index) => [
+            tab.operationId,
+            requestTabFingerprint({
+              operationId: tab.operationId,
+              requestTab: tab.requestTab,
+              draft: restoredDrafts[tab.operationId],
+              position: index,
+            }),
+          ])
         )
         setRequestTabByOperation(
           Object.fromEntries(
@@ -481,6 +511,12 @@ export function WorkspacePage({
           )
         )
         setSavedResponses(workspace.savedResponses)
+        persistedCustomRequestsRef.current = new Map(
+          workspace.customRequests.map((request) => [
+            request.id,
+            customRequestFingerprint(request),
+          ])
+        )
         setResponsePanelHeight(
           clampResponsePanelHeight(workspace.responsePanelHeight)
         )
@@ -533,21 +569,95 @@ export function WorkspacePage({
           return
         }
 
-        upsertRequestTab({
-          data: {
-            operationId: openOperationId,
-            requestTab: requestTabByOperation[openOperationId] ?? "Docs",
-            draft,
-            position: index,
-          },
-        }).catch((error) =>
-          console.error("Failed to persist request tab to IndexedDB:", error)
-        )
+        const data = {
+          operationId: openOperationId,
+          requestTab: requestTabByOperation[openOperationId] ?? "Docs",
+          draft,
+          position: index,
+        }
+        const fingerprint = requestTabFingerprint(data)
+        if (
+          persistedRequestTabsRef.current.get(openOperationId) === fingerprint
+        ) {
+          return
+        }
+        pendingRequestTabsRef.current.set(openOperationId, {
+          fingerprint,
+          data,
+        })
+        void persistLatestRequestTab(openOperationId)
       })
     }, 250)
 
     return () => window.clearTimeout(timeoutId)
   }, [workspaceLoaded, openOperationIds, requestDrafts, requestTabByOperation])
+
+  React.useEffect(() => {
+    if (!workspaceLoaded) return
+
+    const timeoutId = window.setTimeout(() => {
+      for (const request of customRequests) {
+        const fingerprint = customRequestFingerprint(request)
+        if (
+          persistedCustomRequestsRef.current.get(request.id) === fingerprint
+        ) {
+          continue
+        }
+        pendingCustomRequestsRef.current.set(request.id, {
+          fingerprint,
+          request,
+        })
+        void persistLatestCustomRequest(request.id)
+      }
+    }, 350)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [customRequests, workspaceLoaded])
+
+  async function persistLatestRequestTab(requestId: string) {
+    if (savingRequestTabsRef.current.has(requestId)) return
+    savingRequestTabsRef.current.add(requestId)
+    try {
+      for (;;) {
+        const pending = pendingRequestTabsRef.current.get(requestId)
+        if (
+          !pending ||
+          persistedRequestTabsRef.current.get(requestId) === pending.fingerprint
+        ) {
+          return
+        }
+        await upsertRequestTab({ data: pending.data })
+        persistedRequestTabsRef.current.set(requestId, pending.fingerprint)
+      }
+    } catch (error) {
+      console.error("Failed to persist request tab:", error)
+    } finally {
+      savingRequestTabsRef.current.delete(requestId)
+    }
+  }
+
+  async function persistLatestCustomRequest(requestId: string) {
+    if (savingCustomRequestsRef.current.has(requestId)) return
+    savingCustomRequestsRef.current.add(requestId)
+    try {
+      for (;;) {
+        const pending = pendingCustomRequestsRef.current.get(requestId)
+        if (
+          !pending ||
+          persistedCustomRequestsRef.current.get(requestId) ===
+            pending.fingerprint
+        ) {
+          return
+        }
+        await upsertCustomRequest({ data: pending.request })
+        persistedCustomRequestsRef.current.set(requestId, pending.fingerprint)
+      }
+    } catch (error) {
+      console.error("Failed to update custom request:", error)
+    } finally {
+      savingCustomRequestsRef.current.delete(requestId)
+    }
+  }
 
   React.useEffect(() => {
     return () => {
@@ -592,6 +702,10 @@ export function WorkspacePage({
           ).length,
         },
       })
+      persistedCustomRequestsRef.current.set(
+        request.id,
+        customRequestFingerprint(request)
+      )
       setCustomRequests((requests) => [...requests, request])
       setRequestDrafts((drafts) => ({
         ...drafts,
@@ -610,6 +724,10 @@ export function WorkspacePage({
 
   async function handleDeleteCustomRequest(request: PersistedCustomRequest) {
     const requestKey = getCustomRequestKey(request.id)
+    persistedCustomRequestsRef.current.delete(request.id)
+    pendingCustomRequestsRef.current.delete(request.id)
+    persistedRequestTabsRef.current.delete(requestKey)
+    pendingRequestTabsRef.current.delete(requestKey)
     setCustomRequests((requests) =>
       requests.filter((item) => item.id !== request.id)
     )
@@ -673,9 +791,6 @@ export function WorkspacePage({
     setCustomRequests((requests) =>
       requests.map((item) => (item.id === request.id ? nextRequest : item))
     )
-    upsertCustomRequest({ data: nextRequest }).catch((error) =>
-      console.error("Failed to update custom request:", error)
-    )
   }
 
   function updateCurrentDraft(updater: (draft: RequestDraft) => RequestDraft) {
@@ -715,6 +830,8 @@ export function WorkspacePage({
       closedOperationId,
     })
     setOpenOperationIds(nextOperationIds)
+    persistedRequestTabsRef.current.delete(closedOperationId)
+    pendingRequestTabsRef.current.delete(closedOperationId)
     setRequestDrafts((drafts) => {
       const nextDrafts = { ...drafts }
       delete nextDrafts[closedOperationId]
@@ -822,18 +939,22 @@ export function WorkspacePage({
       return
     }
 
+    const loadId = savedResponseLoadRef.current + 1
+    savedResponseLoadRef.current = loadId
+    setLoadingSavedResponseId(response.id)
+    setOpenOperationIds((operationIds) =>
+      operationIds.includes(response.operationId)
+        ? operationIds
+        : [...operationIds, response.operationId]
+    )
+    setSelectedSavedResponseId(response.id)
+    selectOperation(response.operationId, { savedResponse: true })
+
     try {
       const savedResponse = await getSavedResponse({ data: response.id })
-      if (!savedResponse) {
+      if (!savedResponse || savedResponseLoadRef.current !== loadId) {
         return
       }
-
-      setOpenOperationIds((operationIds) =>
-        operationIds.includes(response.operationId)
-          ? operationIds
-          : [...operationIds, response.operationId]
-      )
-      setSelectedSavedResponseId(response.id)
       setResponseStateByOperationId((states) => ({
         ...states,
         [response.operationId]: {
@@ -855,9 +976,12 @@ export function WorkspacePage({
           },
         }))
       }
-      selectOperation(response.operationId, { savedResponse: true })
     } catch (error) {
-      console.error("Failed to load saved response from IndexedDB:", error)
+      console.error("Failed to load saved response:", error)
+    } finally {
+      if (savedResponseLoadRef.current === loadId) {
+        setLoadingSavedResponseId(null)
+      }
     }
   }
 
@@ -1123,6 +1247,7 @@ export function WorkspacePage({
         savedResponses={savedResponses}
         customRequests={customRequests}
         selectedSavedResponseId={selectedSavedResponseId}
+        loadingSavedResponseId={loadingSavedResponseId}
         onSelectOverview={selectOverview}
         onSelectEnvironment={onSelectEnvironment}
         onSelectOperation={(operation) => {
@@ -1172,6 +1297,7 @@ export function WorkspacePage({
             ) : (
               <ApiOverview
                 savedResponses={savedResponses}
+                loadingSavedResponseId={loadingSavedResponseId}
                 onSelectSavedResponse={handleSelectSavedResponse}
                 onSelectEnvironment={onSelectEnvironment}
                 onSelectOperation={(selectedOperationId) =>
@@ -1504,10 +1630,12 @@ function CustomRequestAddressBar({
 
 function ApiOverview({
   savedResponses,
+  loadingSavedResponseId,
   onSelectSavedResponse,
   onSelectEnvironment,
 }: {
   savedResponses: SavedResponseSummary[]
+  loadingSavedResponseId?: string | null
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onSelectEnvironment: () => void
   onSelectOperation: (operationId: string) => void
@@ -1657,8 +1785,13 @@ function ApiOverview({
                         size="icon-sm"
                         aria-label={`Open saved response ${response.name}`}
                         onClick={() => onSelectSavedResponse(response)}
+                        disabled={loadingSavedResponseId === response.id}
                       >
-                        <ArrowRightIcon data-icon="inline-end" />
+                        {loadingSavedResponseId === response.id ? (
+                          <LoaderCircleIcon className="animate-spin" />
+                        ) : (
+                          <ArrowRightIcon data-icon="inline-end" />
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -2255,6 +2388,16 @@ function getDefaultSavedResponseName(
       ? ` - ${responseState.result.status}`
       : ""
   return `${request.method} ${request.displayPath}${status} ${new Date().toLocaleString()}`
+}
+
+function requestTabFingerprint(
+  data: Parameters<typeof upsertRequestTab>[0]["data"]
+) {
+  return JSON.stringify(data)
+}
+
+function customRequestFingerprint(request: PersistedCustomRequest) {
+  return JSON.stringify(request)
 }
 
 function clampResponsePanelHeight(height: number) {

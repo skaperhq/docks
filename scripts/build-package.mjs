@@ -64,13 +64,28 @@ await copyFile(
   resolve(root, "scripts/mcp-runtime.mjs"),
   resolve(outputDirectory, "mcp.js")
 )
+await copyFile(
+  resolve(root, "scripts/postgres-runtime.mjs"),
+  resolve(outputDirectory, "postgres.js")
+)
+await mkdir(resolve(outputDirectory, "migrations"), { recursive: true })
+await copyFile(
+  resolve(root, "migrations/0001_initial.sql"),
+  resolve(outputDirectory, "migrations/0001_initial.sql")
+)
 const mcpCli = await readFile(resolve(root, "scripts/mcp-cli.mjs"), "utf8")
 await writeFile(
   resolve(outputDirectory, "cli.js"),
-  mcpCli.replace('from "./mcp-runtime.mjs"', 'from "./mcp.js"')
+  mcpCli
+    .replace('from "./mcp-runtime.mjs"', 'from "./mcp.js"')
+    .replace('from "./postgres-runtime.mjs"', 'from "./postgres.js"')
 )
 await writeFile(
   resolve(outputDirectory, "mcp.cjs"),
   `"use strict"\n\nexports.createSkaperMcp = async function createSkaperMcp(options) {\n  const runtime = await import("./mcp.js")\n  return runtime.createSkaperMcp(options)\n}\n`
+)
+await writeFile(
+  resolve(outputDirectory, "postgres.cjs"),
+  `"use strict"\n\nexports.createSkaperPostgres = async function createSkaperPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createSkaperPostgres(options)\n}\n\nexports.createPostgresStorageAdapter = async function createPostgresStorageAdapter(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createPostgresStorageAdapter(options)\n}\n\nexports.migrateSkaperPostgres = async function migrateSkaperPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.migrateSkaperPostgres(options)\n}\n`
 )
 await chmod(resolve(outputDirectory, "cli.js"), 0o755)

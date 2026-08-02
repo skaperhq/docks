@@ -4,6 +4,7 @@ import {
   ArrowUpDownIcon,
   BracesIcon,
   CopyIcon,
+  LoaderCircleIcon,
   SaveIcon,
   SearchIcon,
   Trash2Icon,
@@ -62,7 +63,7 @@ export function ResponseBar({
   height: number
   onHeightChange: (height: number) => void
   onHeightCommit: (height: number) => void
-  onSaveResponse: (name: string) => void
+  onSaveResponse: (name: string) => Promise<void> | void
   onClearSseEvents?: () => void
   saveDefaultName: string
   saveDisabled?: boolean
@@ -197,8 +198,12 @@ export function ResponseBar({
               disabled={!result || saveDisabled}
               aria-label="Save response"
             >
-              <SaveIcon className="size-4" />
-              Save
+              {saveDisabled ? (
+                <LoaderCircleIcon className="size-4 animate-spin" />
+              ) : (
+                <SaveIcon className="size-4" />
+              )}
+              {saveDisabled ? "Saving…" : "Save"}
             </Button>
           ) : null}
           {isLoading ? (
@@ -334,13 +339,13 @@ export function ResponseBar({
           </DialogHeader>
           <form
             className="flex flex-col gap-4"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault()
               const trimmedName = saveName.trim()
-              if (!trimmedName) {
+              if (!trimmedName || saveDisabled) {
                 return
               }
-              onSaveResponse(trimmedName)
+              await onSaveResponse(trimmedName)
               setSaveDialogOpen(false)
             }}
           >
@@ -357,7 +362,10 @@ export function ResponseBar({
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={!saveName.trim() || saveDisabled}>
-                Save
+                {saveDisabled ? (
+                  <LoaderCircleIcon className="animate-spin" />
+                ) : null}
+                {saveDisabled ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
           </form>
