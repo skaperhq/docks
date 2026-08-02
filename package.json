@@ -39,7 +39,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "skaper": "./dist/package/cli.js"
+    "skaper": "dist/package/cli.js"
   },
   "files": [
     "dist/package",
