@@ -3,11 +3,23 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { apiOperations } from "@/lib/openapi"
-import { DocsPanel, getCodeBlockHeight } from "./docs-panel"
+import { DocsPanel, getCodeBlockHeight, ResponseSchema } from "./docs-panel"
 
 vi.mock("./body-editor", () => ({
-  BodyEditor: ({ value, readOnly }: { value: string; readOnly?: boolean }) => (
-    <pre data-testid="body-editor" data-read-only={String(readOnly)}>
+  BodyEditor: ({
+    value,
+    readOnly,
+    lineWrapping,
+  }: {
+    value: string
+    readOnly?: boolean
+    lineWrapping?: boolean
+  }) => (
+    <pre
+      data-testid="body-editor"
+      data-read-only={String(readOnly)}
+      data-line-wrapping={String(lineWrapping)}
+    >
       {value}
     </pre>
   ),
@@ -38,10 +50,14 @@ describe("DocsPanel", () => {
       true
     )
     expect(editors[0]?.textContent).toContain("curl --request GET")
+    expect(editors[0]?.dataset.lineWrapping).toBe("true")
     expect(screen.getByRole("button", { name: "Copy cURL" })).toBeTruthy()
     expect(
       screen.getByRole("button", { name: "Copy example value" })
     ).toBeTruthy()
+    expect(
+      document.querySelector('[data-slot="accordion-content"] > div')?.className
+    ).not.toContain("--radix-accordion-content-height")
   })
 
   test("sizes read-only code blocks to their content with a maximum height", () => {
@@ -52,5 +68,19 @@ describe("DocsPanel", () => {
     expect(
       getCodeBlockHeight(Array.from({ length: 100 }, () => "line").join("\n"))
     ).toBe(360)
+  })
+
+  test("gives response schemas a bounded vertical scroll viewport", () => {
+    const response = apiOperations
+      .flatMap((item) => item.responses)
+      .find((item) => item.schema)
+    expect(response).toBeTruthy()
+
+    render(<ResponseSchema response={response!} />)
+
+    expect(
+      screen.getByTestId("response-schema-scroll-area").className
+    ).toContain("h-80")
+    expect(screen.getByRole("table").className).toContain("min-w-208")
   })
 })

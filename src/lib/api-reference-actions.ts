@@ -93,6 +93,13 @@ export type ApiWorkspaceState = {
   responsePanelHeight: number
 }
 
+export type ApiSidebarWorkspaceState = Pick<
+  ApiWorkspaceState,
+  "savedResponses" | "collections" | "customRequests"
+>
+
+const apiSidebarWorkspaceCache = new WeakMap<object, ApiSidebarWorkspaceState>()
+
 export type PersistedCollectionImport = {
   collection: PersistedCollection
   requests: PersistedCustomRequest[]
@@ -120,7 +127,24 @@ export type SaveResponseInput = {
 }
 
 export async function getApiWorkspace(): Promise<ApiWorkspaceState> {
-  return getDocksStorageAdapter().getApiWorkspace()
+  const storage = getDocksStorageAdapter()
+  const workspace = await storage.getApiWorkspace()
+  setCachedApiSidebarWorkspace(workspace)
+  return workspace
+}
+
+export function getCachedApiSidebarWorkspace() {
+  return apiSidebarWorkspaceCache.get(getDocksStorageAdapter())
+}
+
+export function setCachedApiSidebarWorkspace(
+  workspace: ApiSidebarWorkspaceState
+) {
+  apiSidebarWorkspaceCache.set(getDocksStorageAdapter(), {
+    savedResponses: workspace.savedResponses,
+    collections: workspace.collections,
+    customRequests: workspace.customRequests,
+  })
 }
 
 export async function upsertRequestTab({
@@ -236,7 +260,29 @@ export async function updateCollection({
 }
 
 export async function deleteCollection({ data }: { data: string }) {
-  return getDocksStorageAdapter().deleteCollection({ data })
+  const storage = getDocksStorageAdapter()
+  const workspace = await storage.getApiWorkspace()
+  const requests = workspace.customRequests.filter(
+    (request) => request.collectionId === data
+  )
+  const operationIds = new Set(
+    requests.map((request) => `custom:${request.id}`)
+  )
+
+  await Promise.all([
+    ...workspace.savedResponses
+      .filter((response) => operationIds.has(response.operationId))
+      .map((response) =>
+        storage.deleteSavedResponse({ data: { id: response.id } })
+      ),
+    ...requests.map((request) =>
+      storage.deleteRequestTab({ data: `custom:${request.id}` })
+    ),
+  ])
+  await Promise.all(
+    requests.map((request) => storage.deleteCustomRequest({ data: request.id }))
+  )
+  return storage.deleteCollection({ data })
 }
 
 export async function upsertCustomRequest({

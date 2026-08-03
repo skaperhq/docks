@@ -34,7 +34,7 @@ export function getHeaderRows(operation: ApiOperation): KeyValueRow[] {
     if (scheme?.type === "http" && scheme.scheme?.toLowerCase() === "bearer") {
       rows.push({
         key: "Authorization",
-        value: `Bearer {{${securityName === "bearerAuth" ? "access_token" : variableName}}}`,
+        value: `Bearer {{${variableName}}}`,
         description: `Generated from ${securityName} security`,
       })
     } else if (
@@ -82,17 +82,25 @@ export function restoreGeneratedHeaderTemplates(
   headers: KeyValueRow[]
 ): KeyValueRow[] {
   return headers.map((header) => {
+    const generatedSecurityName = header.description.match(
+      /^Generated from (.+) security$/
+    )?.[1]
     const isGeneratedBearerHeader =
       header.key.trim().toLowerCase() === "authorization" &&
-      header.description === "Generated from bearerAuth security"
+      header.value.trim().toLowerCase().startsWith("bearer ") &&
+      Boolean(generatedSecurityName)
 
     if (!isGeneratedBearerHeader || header.value.includes("{{")) {
       return header
     }
 
+    const variableName = generatedSecurityName!.replaceAll(
+      /[^a-zA-Z0-9_]/g,
+      "_"
+    )
     return {
       ...header,
-      value: "Bearer {{access_token}}",
+      value: `Bearer {{${variableName}}}`,
     }
   })
 }

@@ -22,9 +22,35 @@ import type { EnvironmentVariable } from "@/components/environment-provider"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import type { SavedResponseSummary } from "@/components/api-reference/types"
+import type {
+  PersistedCollection,
+  PersistedCustomRequest,
+} from "@/lib/api-reference-actions"
+import {
+  createCollectionWithRequests,
+  createCustomRequest,
+  deleteCollection,
+  deleteCustomRequest,
+  deleteRequestTab,
+  deleteSavedResponse,
+  getCachedApiSidebarWorkspace,
+  getApiWorkspace,
+  setCachedApiSidebarWorkspace,
+} from "@/lib/api-reference-actions"
+import type {
+  CreateRequestInput,
+  ImportOpenApiInput,
+} from "@/components/request-import-dialog"
 
 export const Route = createFileRoute("/environment")({
   component: EnvironmentRoutePage,
@@ -64,6 +90,9 @@ export function EnvironmentPage({
     deleteVariable,
     updateVariable,
   } = useEnvironment()
+  const [initialSidebarWorkspace] = React.useState(() =>
+    getCachedApiSidebarWorkspace()
+  )
 
   // Track password/secret visibility by variable id
   const [visibleSecrets, setVisibleSecrets] = React.useState<
@@ -76,6 +105,47 @@ export function EnvironmentPage({
   const [saveStatus, setSaveStatus] = React.useState<
     "idle" | "saving" | "saved"
   >("idle")
+  const [collections, setCollections] = React.useState<PersistedCollection[]>(
+    () => initialSidebarWorkspace?.collections ?? []
+  )
+  const [customRequests, setCustomRequests] = React.useState<
+    PersistedCustomRequest[]
+  >(() => initialSidebarWorkspace?.customRequests ?? [])
+  const [savedResponses, setSavedResponses] = React.useState<
+    SavedResponseSummary[]
+  >(() => initialSidebarWorkspace?.savedResponses ?? [])
+  const [sidebarWorkspaceLoaded, setSidebarWorkspaceLoaded] = React.useState(
+    Boolean(initialSidebarWorkspace)
+  )
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    void getApiWorkspace()
+      .then((workspace) => {
+        if (cancelled) return
+        setCollections(workspace.collections)
+        setCustomRequests(workspace.customRequests)
+        setSavedResponses(workspace.savedResponses)
+        setSidebarWorkspaceLoaded(true)
+      })
+      .catch((error) =>
+        console.error("Failed to load API workspace for the sidebar:", error)
+      )
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!sidebarWorkspaceLoaded) return
+    setCachedApiSidebarWorkspace({
+      collections,
+      customRequests,
+      savedResponses,
+    })
+  }, [collections, customRequests, savedResponses, sidebarWorkspaceLoaded])
 
   const handleUpdateBaseUrl = (id: string, value: string) => {
     setSaveStatus("saving")
@@ -131,14 +201,131 @@ export function EnvironmentPage({
     }, 200)
   }
 
+  async function handleCreateCustomRequest(input: CreateRequestInput) {
+    try {
+      const request = await createCustomRequest({
+        data: {
+          ...input,
+          collectionId: `${input.transport}-custom`,
+          url:
+            input.url ||
+            (input.transport === "websocket"
+              ? "wss://echo.websocket.events"
+              : input.mode === "sse"
+                ? "https://example.com/events"
+                : "https://api.example.com/resource"),
+          draft: input.draft ?? {
+            params: [],
+            headers: [],
+            body: {
+              mode: "raw",
+              contentType: "application/json",
+              value: "",
+              formDataRows: [],
+              urlEncodedRows: [],
+            },
+          },
+          position: customRequests.filter(
+            (item) => item.transport === input.transport
+          ).length,
+        },
+      })
+      setCustomRequests((requests) => [...requests, request])
+      return request
+    } catch (error) {
+      console.error("Failed to create custom request:", error)
+      return null
+    }
+  }
+
+  async function handleImportOpenApi(input: ImportOpenApiInput) {
+    try {
+      const imported = await createCollectionWithRequests({
+        data: {
+          name: input.name,
+          position: collections.length,
+          requests: input.requests.map((request, position) => ({
+            ...request,
+            position,
+          })),
+        },
+      })
+      setCollections((items) => [...items, imported.collection])
+      setCustomRequests((requests) => [...requests, ...imported.requests])
+      return imported.requests
+    } catch (error) {
+      console.error("Failed to import OpenAPI collection:", error)
+      return null
+    }
+  }
+
+  async function handleDeleteCustomRequest(request: PersistedCustomRequest) {
+    const requestKey = `custom:${request.id}`
+    setCustomRequests((requests) =>
+      requests.filter((item) => item.id !== request.id)
+    )
+    setSavedResponses((responses) =>
+      responses.filter((response) => response.operationId !== requestKey)
+    )
+
+    try {
+      await Promise.all([
+        deleteCustomRequest({ data: request.id }),
+        deleteRequestTab({ data: requestKey }),
+      ])
+    } catch (error) {
+      console.error("Failed to delete custom request:", error)
+      setCustomRequests((requests) => [...requests, request])
+    }
+  }
+
+  async function handleDeleteCollection(collection: PersistedCollection) {
+    const requestIds = new Set(
+      customRequests
+        .filter((request) => request.collectionId === collection.id)
+        .map((request) => `custom:${request.id}`)
+    )
+    setCollections((items) => items.filter((item) => item.id !== collection.id))
+    setCustomRequests((requests) =>
+      requests.filter((request) => request.collectionId !== collection.id)
+    )
+    setSavedResponses((responses) =>
+      responses.filter((response) => !requestIds.has(response.operationId))
+    )
+
+    try {
+      await deleteCollection({ data: collection.id })
+    } catch (error) {
+      console.error("Failed to delete imported collection:", error)
+      const workspace = await getApiWorkspace().catch(() => null)
+      if (workspace) {
+        setCollections(workspace.collections)
+        setCustomRequests(workspace.customRequests)
+        setSavedResponses(workspace.savedResponses)
+      }
+    }
+  }
+
+  async function handleDeleteSavedResponse(response: SavedResponseSummary) {
+    setSavedResponses((responses) =>
+      responses.filter((item) => item.id !== response.id)
+    )
+    try {
+      await deleteSavedResponse({ data: { id: response.id } })
+    } catch (error) {
+      console.error("Failed to delete saved response:", error)
+      setSavedResponses((responses) => [response, ...responses])
+    }
+  }
+
   return (
     <SidebarProvider>
       <AppSidebar
         activePage="environment"
         selectedOperationId={null}
-        savedResponses={[]}
-        collections={[]}
-        customRequests={[]}
+        savedResponses={savedResponses}
+        collections={collections}
+        customRequests={customRequests}
         selectedRequestId={null}
         onSelectOverview={onSelectWorkspace}
         onSelectEnvironment={() => {}}
@@ -146,10 +333,11 @@ export function EnvironmentPage({
         onSelectSavedResponse={(response) =>
           onSelectOperation(response.operationId)
         }
-        onDeleteSavedResponse={() => {}}
-        onDeleteCustomRequest={() => {}}
-        onCreateCustomRequest={async () => null}
-        onImportOpenApi={async () => null}
+        onDeleteSavedResponse={handleDeleteSavedResponse}
+        onDeleteCustomRequest={handleDeleteCustomRequest}
+        onDeleteCollection={handleDeleteCollection}
+        onCreateCustomRequest={handleCreateCustomRequest}
+        onImportOpenApi={handleImportOpenApi}
         onSelectCustomRequest={(request) =>
           onSelectOperation(`custom:${request.id}`)
         }
@@ -403,7 +591,6 @@ export function EnvironmentPage({
                       {activeEnvironment.variables.length > 0 ? (
                         <div className="min-w-208 divide-y divide-border">
                           {activeEnvironment.variables.map((variable) => {
-                            const isSecret = variable.isSecret ?? false
                             const showSecret =
                               visibleSecrets[variable.id] ?? false
                             return (
@@ -447,47 +634,44 @@ export function EnvironmentPage({
                                 </div>
 
                                 {/* Value */}
-                                <div className="relative flex items-center gap-1.5 pr-3">
-                                  <Input
-                                    type={
-                                      isSecret && !showSecret
-                                        ? "password"
-                                        : "text"
-                                    }
-                                    value={variable.value}
-                                    onChange={(e) =>
-                                      handleUpdateVar(
-                                        activeEnvironment.id,
-                                        variable.id,
-                                        {
-                                          value: e.target.value,
+                                <div className="pr-3">
+                                  <InputGroup className="rounded-none border-border/80 bg-background">
+                                    <InputGroupInput
+                                      type={showSecret ? "text" : "password"}
+                                      value={variable.value}
+                                      onChange={(e) =>
+                                        handleUpdateVar(
+                                          activeEnvironment.id,
+                                          variable.id,
+                                          {
+                                            value: e.target.value,
+                                          }
+                                        )
+                                      }
+                                      className="text-[12px]"
+                                      placeholder="value"
+                                    />
+                                    <InputGroupAddon align="inline-end">
+                                      <InputGroupButton
+                                        size="icon-xs"
+                                        onClick={() =>
+                                          toggleSecretVisibility(variable.id)
                                         }
-                                      )
-                                    }
-                                    className="h-8 flex-1 rounded-none border-border/80 bg-background pr-8 text-[12px] focus-visible:ring-primary"
-                                    placeholder="value"
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() =>
-                                      toggleSecretVisibility(variable.id)
-                                    }
-                                    className="absolute right-5 text-muted-foreground hover:text-foreground"
-                                    aria-label={
-                                      showSecret ? "Hide value" : "Show value"
-                                    }
-                                    title={
-                                      showSecret ? "Hide value" : "Show value"
-                                    }
-                                  >
-                                    {showSecret ? (
-                                      <EyeOff className="size-3.5" />
-                                    ) : (
-                                      <Eye className="size-3.5" />
-                                    )}
-                                  </Button>
+                                        aria-label={
+                                          showSecret
+                                            ? "Hide value"
+                                            : "Show value"
+                                        }
+                                        title={
+                                          showSecret
+                                            ? "Hide value"
+                                            : "Show value"
+                                        }
+                                      >
+                                        {showSecret ? <EyeOff /> : <Eye />}
+                                      </InputGroupButton>
+                                    </InputGroupAddon>
+                                  </InputGroup>
                                 </div>
 
                                 {/* Description */}

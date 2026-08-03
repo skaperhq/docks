@@ -25,4 +25,36 @@ describe("storage adapter configuration", () => {
     expect(storage.isDocksStorageAdapterConfigured()).toBe(true)
     expect(storage.getDocksStorageAdapter()).toBe(adapter)
   })
+
+  test("caches hydrated sidebar data for seamless route transitions", async () => {
+    const storage = await import("./storage-adapter")
+    const actions = await import("./api-reference-actions")
+    const workspace = {
+      requestTabs: [],
+      savedResponses: [],
+      collections: [
+        {
+          id: "payments",
+          name: "Payments",
+          position: 0,
+          createdAt: "2026-08-03T00:00:00.000Z",
+          updatedAt: "2026-08-03T00:00:00.000Z",
+        },
+      ],
+      customRequests: [],
+      responsePanelHeight: 360,
+    }
+    const adapter = {
+      getApiWorkspace: vi.fn().mockResolvedValue(workspace),
+    } as unknown as StorageAdapter
+    storage.setDocksStorageAdapter(adapter)
+
+    expect(actions.getCachedApiSidebarWorkspace()).toBeUndefined()
+    await expect(actions.getApiWorkspace()).resolves.toBe(workspace)
+    expect(actions.getCachedApiSidebarWorkspace()).toEqual({
+      savedResponses: workspace.savedResponses,
+      collections: workspace.collections,
+      customRequests: workspace.customRequests,
+    })
+  })
 })

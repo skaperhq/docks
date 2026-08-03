@@ -73,7 +73,10 @@ paths:
     )
     expect(preview.requests[0]?.draft.headers).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ key: "Authorization" }),
+        expect.objectContaining({
+          key: "Authorization",
+          value: "Bearer {{bearerAuth}}",
+        }),
         expect.objectContaining({
           key: "Content-Type",
           value: "application/json",

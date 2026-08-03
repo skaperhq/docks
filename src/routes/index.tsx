@@ -89,13 +89,16 @@ import type {
 import {
   createCollectionWithRequests,
   createCustomRequest,
+  deleteCollection,
   deleteCustomRequest,
   deleteRequestTab,
   deleteSavedResponse,
+  getCachedApiSidebarWorkspace,
   getApiWorkspace,
   getSavedResponse,
   saveResponse,
   saveWorkspaceSetting,
+  setCachedApiSidebarWorkspace,
   upsertCustomRequest,
   upsertRequestTab,
 } from "@/lib/api-reference-actions"
@@ -195,6 +198,9 @@ export function WorkspacePage({
   onSelectEnvironment: () => void
 }) {
   const { activeEnvironment, resolveVariables } = useEnvironment()
+  const [initialSidebarWorkspace] = React.useState(() =>
+    getCachedApiSidebarWorkspace()
+  )
 
   const [openOperationIds, setOpenOperationIds] = React.useState<string[]>(
     () => [defaultOperation.id]
@@ -204,13 +210,13 @@ export function WorkspacePage({
     React.useState<RequestTabMap>({})
   const [customRequests, setCustomRequests] = React.useState<
     PersistedCustomRequest[]
-  >([])
+  >(() => initialSidebarWorkspace?.customRequests ?? [])
   const [collections, setCollections] = React.useState<PersistedCollection[]>(
-    []
+    () => initialSidebarWorkspace?.collections ?? []
   )
   const [savedResponses, setSavedResponses] = React.useState<
     SavedResponseSummary[]
-  >([])
+  >(() => initialSidebarWorkspace?.savedResponses ?? [])
   const [selectedSavedResponseId, setSelectedSavedResponseId] = React.useState<
     string | null
   >(null)
@@ -626,6 +632,15 @@ export function WorkspacePage({
     return () => window.clearTimeout(timeoutId)
   }, [customRequests, workspaceLoaded])
 
+  React.useEffect(() => {
+    if (!workspaceLoaded) return
+    setCachedApiSidebarWorkspace({
+      collections,
+      customRequests,
+      savedResponses,
+    })
+  }, [collections, customRequests, savedResponses, workspaceLoaded])
+
   async function persistLatestRequestTab(requestId: string) {
     if (savingRequestTabsRef.current.has(requestId)) return
     savingRequestTabsRef.current.add(requestId)
@@ -793,6 +808,68 @@ export function WorkspacePage({
     } catch (error) {
       console.error("Failed to delete custom request:", error)
       setCustomRequests((requests) => [...requests, request])
+    }
+  }
+
+  async function handleDeleteCollection(collection: PersistedCollection) {
+    const collectionRequests = customRequests.filter(
+      (request) => request.collectionId === collection.id
+    )
+    const requestKeys = new Set(
+      collectionRequests.map((request) => getCustomRequestKey(request.id))
+    )
+
+    for (const request of collectionRequests) {
+      const requestKey = getCustomRequestKey(request.id)
+      persistedCustomRequestsRef.current.delete(request.id)
+      pendingCustomRequestsRef.current.delete(request.id)
+      persistedRequestTabsRef.current.delete(requestKey)
+      pendingRequestTabsRef.current.delete(requestKey)
+    }
+
+    setCollections((items) => items.filter((item) => item.id !== collection.id))
+    setCustomRequests((requests) =>
+      requests.filter((request) => request.collectionId !== collection.id)
+    )
+    setSavedResponses((responses) =>
+      responses.filter((response) => !requestKeys.has(response.operationId))
+    )
+    setOpenOperationIds((operationIds) =>
+      operationIds.filter((id) => !requestKeys.has(id))
+    )
+    setRequestDrafts((drafts) => omitRequestKeys(drafts, requestKeys))
+    setRequestTabByOperation((tabs) => omitRequestKeys(tabs, requestKeys))
+    setResponseStateByOperationId((states) =>
+      omitRequestKeys(states, requestKeys)
+    )
+    setWebSocketConnectionStateByOperationId((states) =>
+      omitRequestKeys(states, requestKeys)
+    )
+    setRequestSnapshotByOperationId((snapshots) =>
+      omitRequestKeys(snapshots, requestKeys)
+    )
+
+    if (
+      activeStreamRef.current &&
+      requestKeys.has(activeStreamRef.current.id)
+    ) {
+      activeStreamRef.current.close()
+      activeStreamRef.current = null
+    }
+    if (selectedRequest && requestKeys.has(selectedRequest.id)) {
+      selectOverview()
+    }
+
+    try {
+      await deleteCollection({ data: collection.id })
+    } catch (error) {
+      console.error("Failed to delete imported collection:", error)
+      const workspace = await getApiWorkspace().catch(() => null)
+      if (workspace) {
+        setCollections(workspace.collections)
+        setCustomRequests(workspace.customRequests)
+        setSavedResponses(workspace.savedResponses)
+      }
     }
   }
 
@@ -1299,6 +1376,7 @@ export function WorkspacePage({
         onSelectSavedResponse={handleSelectSavedResponse}
         onDeleteSavedResponse={handleDeleteSavedResponse}
         onDeleteCustomRequest={handleDeleteCustomRequest}
+        onDeleteCollection={handleDeleteCollection}
         onCreateCustomRequest={handleCreateCustomRequest}
         onImportOpenApi={handleImportOpenApi}
         onSelectCustomRequest={handleSelectCustomRequest}
@@ -1982,6 +2060,17 @@ function getCustomRequestKey(id: string) {
 
 function getProtocolCustomBucketId(transport: RequestTransport) {
   return `${transport}-custom`
+}
+
+function omitRequestKeys<T>(
+  record: Partial<Record<string, T>>,
+  requestKeys: Set<string>
+) {
+  const nextRecord = { ...record }
+  for (const requestKey of requestKeys) {
+    delete nextRecord[requestKey]
+  }
+  return nextRecord
 }
 
 function isKnownRequestId(

@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest"
 import { AppSidebar } from "./app-sidebar"
 import { SidebarProvider } from "./ui/sidebar"
+import { apiOperations } from "@/lib/openapi"
 
 vi.mock("@/components/environment-provider", () => ({
   useEnvironment: () => ({
@@ -30,16 +31,30 @@ beforeAll(() => {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   })
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  )
 })
 
 afterEach(cleanup)
 
-function SidebarUnderTest() {
+function SidebarUnderTest({
+  activePage = "environment",
+  selectedOperationId = null,
+}: {
+  activePage?: "workspace" | "environment"
+  selectedOperationId?: string | null
+} = {}) {
   return (
     <SidebarProvider>
       <AppSidebar
-        activePage="environment"
-        selectedOperationId={null}
+        activePage={activePage}
+        selectedOperationId={selectedOperationId}
         selectedRequestId={null}
         savedResponses={[]}
         collections={[]}
@@ -50,6 +65,7 @@ function SidebarUnderTest() {
         onSelectSavedResponse={vi.fn()}
         onDeleteSavedResponse={vi.fn()}
         onDeleteCustomRequest={vi.fn()}
+        onDeleteCollection={vi.fn()}
         onCreateCustomRequest={async () => null}
         onImportOpenApi={async () => null}
         onSelectCustomRequest={vi.fn()}
@@ -72,6 +88,28 @@ describe("AppSidebar", () => {
     expect(
       screen.getByText("HTTP").closest("button")?.getAttribute("data-state")
     ).toBe("open")
+  })
+
+  test("keeps the active transport open when a selected request is removed", () => {
+    const operation = apiOperations.find(
+      (item) => item.requestMode !== "sse" && item.method !== "WS"
+    )!
+    const view = render(
+      <SidebarUnderTest
+        activePage="workspace"
+        selectedOperationId={operation.id}
+      />
+    )
+
+    expect(screen.getByText("HTTP").closest("button")?.dataset.state).toBe(
+      "open"
+    )
+
+    view.rerender(<SidebarUnderTest activePage="workspace" />)
+
+    expect(screen.getByText("HTTP").closest("button")?.dataset.state).toBe(
+      "open"
+    )
   })
 
   test("shows saved responses beneath a custom request", () => {
@@ -122,6 +160,7 @@ describe("AppSidebar", () => {
           onSelectSavedResponse={onSelectSavedResponse}
           onDeleteSavedResponse={vi.fn()}
           onDeleteCustomRequest={vi.fn()}
+          onDeleteCollection={vi.fn()}
           onCreateCustomRequest={async () => null}
           onImportOpenApi={async () => null}
           onSelectCustomRequest={vi.fn()}
@@ -137,7 +176,8 @@ describe("AppSidebar", () => {
     expect(onSelectSavedResponse).toHaveBeenCalledWith(savedResponse)
   })
 
-  test("renders imported collections with OpenAPI tag folders", () => {
+  test("renders imported collections with OpenAPI tag folders", async () => {
+    const onDeleteCollection = vi.fn()
     const request = {
       id: "imported-1",
       collectionId: "payments-api",
@@ -156,6 +196,14 @@ describe("AppSidebar", () => {
       createdAt: "2026-08-02T00:00:00.000Z",
       updatedAt: "2026-08-02T00:00:00.000Z",
     }
+    const inactiveFolderRequest = {
+      ...request,
+      id: "imported-2",
+      name: "Create refund",
+      url: "https://api.example.com/refunds",
+      folder: "Refunds",
+      position: 1,
+    }
 
     render(
       <SidebarProvider>
@@ -173,13 +221,14 @@ describe("AppSidebar", () => {
               updatedAt: request.updatedAt,
             },
           ]}
-          customRequests={[request]}
+          customRequests={[request, inactiveFolderRequest]}
           onSelectOverview={vi.fn()}
           onSelectEnvironment={vi.fn()}
           onSelectOperation={vi.fn()}
           onSelectSavedResponse={vi.fn()}
           onDeleteSavedResponse={vi.fn()}
           onDeleteCustomRequest={vi.fn()}
+          onDeleteCollection={onDeleteCollection}
           onCreateCustomRequest={async () => null}
           onImportOpenApi={async () => null}
           onSelectCustomRequest={vi.fn()}
@@ -189,6 +238,46 @@ describe("AppSidebar", () => {
 
     expect(screen.getByText("Payments API")).toBeTruthy()
     expect(screen.getByText("Payments")).toBeTruthy()
-    expect(screen.getByText("Create payment")).toBeTruthy()
+    const requestUrl = screen.getByText("https://api.example.com/payments")
+    expect(requestUrl.dataset.slot).toBe("tooltip-trigger")
+    expect(requestUrl.className).toContain("text-left")
+    expect(requestUrl.closest("button")?.className).toContain("text-left")
+    expect(
+      requestUrl.closest("button")?.querySelector("span")?.className
+    ).toContain("text-left")
+    expect(requestUrl.parentElement?.parentElement?.className).toContain(
+      "rounded-none"
+    )
+    expect(screen.queryByText("Create payment")).toBeNull()
+
+    fireEvent.pointerMove(requestUrl, { pointerType: "mouse" })
+    const urlTooltip = await screen.findByRole("tooltip")
+    expect(urlTooltip.textContent).toContain(request.url)
+    expect(urlTooltip.querySelector('[data-slot="tooltip-arrow"]')).toBeNull()
+
+    const paymentsButton = screen.getByText("Payments").closest("button")!
+    const refundsButton = screen.getByText("Refunds").closest("button")!
+    expect(paymentsButton.className).toContain("rounded-none")
+    expect(paymentsButton.querySelector("svg")?.className.baseVal).toContain(
+      "rotate-90"
+    )
+    expect(refundsButton.querySelector("svg")?.className.baseVal).not.toContain(
+      "rotate-90"
+    )
+
+    const deleteButton = screen.getByRole("button", {
+      name: "Delete Payments API collection",
+    })
+    expect(deleteButton.className).toContain("absolute")
+    expect(deleteButton.className).toContain("opacity-0")
+    expect(
+      deleteButton.parentElement?.querySelector('[data-slot="folder-count"]')
+        ?.className
+    ).toContain("group-hover/folder-row:opacity-0")
+
+    fireEvent.click(deleteButton)
+    expect(onDeleteCollection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "payments-api" })
+    )
   })
 })

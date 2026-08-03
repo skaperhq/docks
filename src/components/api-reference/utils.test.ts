@@ -82,7 +82,7 @@ describe("API reference utilities", () => {
     ).toEqual([
       {
         key: "Authorization",
-        value: "Bearer {{access_token}}",
+        value: "Bearer {{bearerAuth}}",
         description: "Generated from bearerAuth security",
       },
       {
@@ -133,6 +133,6 @@ describe("API reference utilities", () => {
     expect(getMethodClassName("WS")).toContain("violet")
     expect(getBgMethodClassName("WS")).toContain("violet")
     expect(getMethodClassName("OPTIONS")).toBe("text-muted-foreground")
-    expect(getBgMethodClassName("OPTIONS")).toBe("bg-muted")
+    expect(getBgMethodClassName("OPTIONS")).toContain("bg-muted")
   })
 })

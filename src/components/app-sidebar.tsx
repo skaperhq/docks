@@ -34,6 +34,12 @@ import {
 } from "@/components/ui/collapsible"
 import { Button } from "@/components/ui/button"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -78,6 +84,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
+  onDeleteCollection: (collection: PersistedCollection) => void
   onCreateCustomRequest: (
     input: CreateRequestInput
   ) => Promise<PersistedCustomRequest | null>
@@ -102,6 +109,7 @@ export function AppSidebar({
   onSelectSavedResponse,
   onDeleteSavedResponse,
   onDeleteCustomRequest,
+  onDeleteCollection,
   onCreateCustomRequest,
   onImportOpenApi,
   onSelectCustomRequest,
@@ -196,9 +204,6 @@ export function AppSidebar({
       activePage !== "workspace" ||
       (!selectedOperationId && !selectedRequestId)
     ) {
-      setHttpOpen(false)
-      setSseOpen(false)
-      setWebsocketOpen(false)
       return
     }
 
@@ -208,17 +213,17 @@ export function AppSidebar({
       )
       const isSse = selectedOp?.requestMode === "sse"
       const isWs = selectedOp?.method === "WS"
-      setHttpOpen(!isSse && !isWs)
-      setSseOpen(isSse)
-      setWebsocketOpen(isWs)
+      if (isWs) setWebsocketOpen(true)
+      else if (isSse) setSseOpen(true)
+      else setHttpOpen(true)
       return
     }
 
     const isWs = selectedCustomRequestProtocol === "websocket"
     const isSse = selectedCustomRequestProtocol === "sse"
-    setHttpOpen(!isWs && !isSse)
-    setSseOpen(isSse)
-    setWebsocketOpen(isWs)
+    if (isWs) setWebsocketOpen(true)
+    else if (isSse) setSseOpen(true)
+    else if (selectedCustomRequestProtocol === "http") setHttpOpen(true)
   }, [
     activePage,
     selectedCustomRequestProtocol,
@@ -227,193 +232,125 @@ export function AppSidebar({
   ])
 
   return (
-    <Sidebar {...props}>
-      <SidebarContent>
-        <div className="flex items-center gap-2 px-2.5 pt-3">
-          <div className="rounded-sm bg-primary p-1">
-            <img src={Logo} className="size-5" alt="" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-normal text-sidebar-foreground">
-              Skaper
+    <TooltipProvider delayDuration={300}>
+      <Sidebar {...props}>
+        <SidebarContent>
+          <div className="flex items-center gap-2 px-2.5 pt-3">
+            <div className="rounded-sm bg-primary p-1">
+              <img src={Logo} className="size-5" alt="" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[15px] font-normal text-sidebar-foreground">
+                Skaper
+              </div>
             </div>
           </div>
-        </div>
 
-        <SidebarGroup className="mt-2 px-2 py-0">
-          <SidebarGroupContent className="flex flex-col gap-1">
-            <Select
-              value={activeEnvironmentId || ""}
-              onValueChange={setActiveEnvironmentId}
-            >
-              <SelectTrigger
-                className="h-8 w-full rounded-none text-[13px]"
-                aria-label="Select active environment"
+          <SidebarGroup className="mt-2 px-2 py-0">
+            <SidebarGroupContent className="flex flex-col gap-1">
+              <Select
+                value={activeEnvironmentId || ""}
+                onValueChange={setActiveEnvironmentId}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Environments</SelectLabel>
-                  {environments.map((env) => (
-                    <SelectItem key={env.id} value={env.id}>
-                      {env.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                <SelectTrigger
+                  className="h-8 w-full rounded-none text-[13px]"
+                  aria-label="Select active environment"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Environments</SelectLabel>
+                    {environments.map((env) => (
+                      <SelectItem key={env.id} value={env.id}>
+                        {env.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </SidebarGroupContent>
+          </SidebarGroup>
 
-        <SidebarGroup className="mt-1 px-2 py-1">
-          <SidebarGroupContent className="flex flex-col gap-2">
-            <RequestSearchCommand
-              customRequests={customRequests}
-              onSelectOverview={onSelectOverview}
-              onSelectEnvironment={onSelectEnvironment}
-              onSelectOperation={onSelectOperation}
-              onSelectCustomRequest={onSelectCustomRequest}
-            />
+          <SidebarGroup className="mt-1 px-2 py-1">
+            <SidebarGroupContent className="flex flex-col gap-2">
+              <RequestSearchCommand
+                customRequests={customRequests}
+                onSelectOverview={onSelectOverview}
+                onSelectEnvironment={onSelectEnvironment}
+                onSelectOperation={onSelectOperation}
+                onSelectCustomRequest={onSelectCustomRequest}
+              />
+              <Button
+                type="button"
+                onClick={() => setRequestDialogOpen(true)}
+                className="w-full rounded-none font-mono text-sm font-normal uppercase"
+              >
+                <PlusIcon className="size-4" strokeWidth={2} />
+                Add request
+              </Button>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup className="p-0.5 px-2 pt-1">
             <Button
               type="button"
-              onClick={() => setRequestDialogOpen(true)}
-              className="w-full rounded-none font-mono text-sm font-normal uppercase"
-            >
-              <PlusIcon className="size-4" strokeWidth={2} />
-              Add request
-            </Button>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup className="p-0.5 px-2 pt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onSelectOverview}
-            aria-current={
-              isOverviewRoute &&
-              selectedOperationId === null &&
-              selectedRequestId === null
-                ? "page"
-                : undefined
-            }
-            className={cn(
-              "w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              isOverviewRoute &&
+              variant="ghost"
+              onClick={onSelectOverview}
+              aria-current={
+                isOverviewRoute &&
                 selectedOperationId === null &&
-                selectedRequestId === null &&
-                "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            )}
-          >
-            <HomeIcon className="w-4 text-sidebar-foreground/60" />
-            <span className="truncate font-mono text-[13px] font-normal uppercase">
-              Overview
-            </span>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onSelectEnvironment}
-            className={cn(
-              "w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              activePage === "environment" &&
-                "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            )}
-          >
-            <Container className="w-4 text-sidebar-foreground/60" />
-            <span className="truncate font-mono text-[13px] font-normal uppercase">
-              Environment
-            </span>
-          </Button>
-        </SidebarGroup>
+                selectedRequestId === null
+                  ? "page"
+                  : undefined
+              }
+              className={cn(
+                "w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                isOverviewRoute &&
+                  selectedOperationId === null &&
+                  selectedRequestId === null &&
+                  "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+              )}
+            >
+              <HomeIcon className="w-4 text-sidebar-foreground/60" />
+              <span className="truncate font-mono text-[13px] font-normal uppercase">
+                Overview
+              </span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onSelectEnvironment}
+              className={cn(
+                "w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                activePage === "environment" &&
+                  "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+              )}
+            >
+              <Container className="w-4 text-sidebar-foreground/60" />
+              <span className="truncate font-mono text-[13px] font-normal uppercase">
+                Environment
+              </span>
+            </Button>
+          </SidebarGroup>
 
-        <SidebarGroup className="p-0.5 px-2 pt-0">
-          <TransportSection
-            label="HTTP"
-            icon={
-              <ArrowLeftRightIcon className="w-4 text-sidebar-foreground/60" />
-            }
-            count={
-              httpOpenApiGroups.reduce(
-                (acc, g) => acc + g.operations.length,
-                0
-              ) + customRequestsByGroup.http.length
-            }
-            open={httpOpen}
-            onOpenChange={setHttpOpen}
-            openApiContent={
-              <OpenApiRequestTree
-                groups={httpOpenApiGroups}
-                selectedOperationId={selectedOperationId}
-                savedResponsesByOperation={savedResponsesByOperation}
-                selectedSavedResponseId={selectedSavedResponseId}
-                loadingSavedResponseId={loadingSavedResponseId}
-                onSelectOperation={onSelectOperation}
-                onSelectSavedResponse={onSelectSavedResponse}
-                onDeleteSavedResponse={onDeleteSavedResponse}
-              />
-            }
-            customRequests={customRequestsByGroup.http}
-            collections={collections}
-            savedResponsesByOperation={savedResponsesByOperation}
-            selectedRequestId={selectedRequestId}
-            selectedSavedResponseId={selectedSavedResponseId}
-            loadingSavedResponseId={loadingSavedResponseId}
-            onSelectCustomRequest={onSelectCustomRequest}
-            onSelectSavedResponse={onSelectSavedResponse}
-            onDeleteSavedResponse={onDeleteSavedResponse}
-            onDeleteCustomRequest={onDeleteCustomRequest}
-          />
-          <TransportSection
-            label="SSE"
-            icon={<SatelliteDish className="w-4 text-sidebar-foreground/60" />}
-            count={
-              sseOpenApiGroups.reduce(
-                (acc, g) => acc + g.operations.length,
-                0
-              ) + customRequestsByGroup.sse.length
-            }
-            open={sseOpen}
-            onOpenChange={setSseOpen}
-            openApiContent={
-              <OpenApiRequestTree
-                groups={sseOpenApiGroups}
-                selectedOperationId={selectedOperationId}
-                savedResponsesByOperation={savedResponsesByOperation}
-                selectedSavedResponseId={selectedSavedResponseId}
-                loadingSavedResponseId={loadingSavedResponseId}
-                onSelectOperation={onSelectOperation}
-                onSelectSavedResponse={onSelectSavedResponse}
-                onDeleteSavedResponse={onDeleteSavedResponse}
-              />
-            }
-            customRequests={customRequestsByGroup.sse}
-            collections={collections}
-            savedResponsesByOperation={savedResponsesByOperation}
-            selectedRequestId={selectedRequestId}
-            selectedSavedResponseId={selectedSavedResponseId}
-            loadingSavedResponseId={loadingSavedResponseId}
-            onSelectCustomRequest={onSelectCustomRequest}
-            onSelectSavedResponse={onSelectSavedResponse}
-            onDeleteSavedResponse={onDeleteSavedResponse}
-            onDeleteCustomRequest={onDeleteCustomRequest}
-          />
-          <TransportSection
-            label="WebSocket"
-            icon={<PlugIcon className="w-4 text-sidebar-foreground/60" />}
-            count={
-              websocketOpenApiGroups.reduce(
-                (acc, g) => acc + g.operations.length,
-                0
-              ) + customRequestsByGroup.websocket.length
-            }
-            open={websocketOpen}
-            onOpenChange={setWebsocketOpen}
-            openApiContent={
-              websocketOpenApiGroups.length > 0 ? (
+          <SidebarGroup className="p-0.5 px-2 pt-0">
+            <TransportSection
+              label="HTTP"
+              icon={
+                <ArrowLeftRightIcon className="w-4 text-sidebar-foreground/60" />
+              }
+              count={
+                httpOpenApiGroups.reduce(
+                  (acc, g) => acc + g.operations.length,
+                  0
+                ) + customRequestsByGroup.http.length
+              }
+              open={httpOpen}
+              onOpenChange={setHttpOpen}
+              openApiContent={
                 <OpenApiRequestTree
-                  groups={websocketOpenApiGroups}
+                  groups={httpOpenApiGroups}
                   selectedOperationId={selectedOperationId}
                   savedResponsesByOperation={savedResponsesByOperation}
                   selectedSavedResponseId={selectedSavedResponseId}
@@ -422,36 +359,111 @@ export function AppSidebar({
                   onSelectSavedResponse={onSelectSavedResponse}
                   onDeleteSavedResponse={onDeleteSavedResponse}
                 />
-              ) : (
-                <EmptyProtocolFolder label="WebSocket" />
-              )
-            }
-            customRequests={customRequestsByGroup.websocket}
-            collections={collections}
-            savedResponsesByOperation={savedResponsesByOperation}
-            selectedRequestId={selectedRequestId}
-            selectedSavedResponseId={selectedSavedResponseId}
-            loadingSavedResponseId={loadingSavedResponseId}
-            onSelectCustomRequest={onSelectCustomRequest}
-            onSelectSavedResponse={onSelectSavedResponse}
-            onDeleteSavedResponse={onDeleteSavedResponse}
-            onDeleteCustomRequest={onDeleteCustomRequest}
-          />
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border p-3">
-        <ThemeToggle />
-      </SidebarFooter>
-      <SidebarRail />
-      <RequestImportDialog
-        open={requestDialogOpen}
-        onOpenChange={setRequestDialogOpen}
-        collectionNames={collections.map((collection) => collection.name)}
-        onCreateRequest={onCreateCustomRequest}
-        onImportOpenApi={onImportOpenApi}
-        onSelectCustomRequest={onSelectCustomRequest}
-      />
-    </Sidebar>
+              }
+              customRequests={customRequestsByGroup.http}
+              collections={collections}
+              savedResponsesByOperation={savedResponsesByOperation}
+              selectedRequestId={selectedRequestId}
+              selectedSavedResponseId={selectedSavedResponseId}
+              loadingSavedResponseId={loadingSavedResponseId}
+              onSelectCustomRequest={onSelectCustomRequest}
+              onSelectSavedResponse={onSelectSavedResponse}
+              onDeleteSavedResponse={onDeleteSavedResponse}
+              onDeleteCustomRequest={onDeleteCustomRequest}
+              onDeleteCollection={onDeleteCollection}
+            />
+            <TransportSection
+              label="SSE"
+              icon={
+                <SatelliteDish className="w-4 text-sidebar-foreground/60" />
+              }
+              count={
+                sseOpenApiGroups.reduce(
+                  (acc, g) => acc + g.operations.length,
+                  0
+                ) + customRequestsByGroup.sse.length
+              }
+              open={sseOpen}
+              onOpenChange={setSseOpen}
+              openApiContent={
+                <OpenApiRequestTree
+                  groups={sseOpenApiGroups}
+                  selectedOperationId={selectedOperationId}
+                  savedResponsesByOperation={savedResponsesByOperation}
+                  selectedSavedResponseId={selectedSavedResponseId}
+                  loadingSavedResponseId={loadingSavedResponseId}
+                  onSelectOperation={onSelectOperation}
+                  onSelectSavedResponse={onSelectSavedResponse}
+                  onDeleteSavedResponse={onDeleteSavedResponse}
+                />
+              }
+              customRequests={customRequestsByGroup.sse}
+              collections={collections}
+              savedResponsesByOperation={savedResponsesByOperation}
+              selectedRequestId={selectedRequestId}
+              selectedSavedResponseId={selectedSavedResponseId}
+              loadingSavedResponseId={loadingSavedResponseId}
+              onSelectCustomRequest={onSelectCustomRequest}
+              onSelectSavedResponse={onSelectSavedResponse}
+              onDeleteSavedResponse={onDeleteSavedResponse}
+              onDeleteCustomRequest={onDeleteCustomRequest}
+              onDeleteCollection={onDeleteCollection}
+            />
+            <TransportSection
+              label="WebSocket"
+              icon={<PlugIcon className="w-4 text-sidebar-foreground/60" />}
+              count={
+                websocketOpenApiGroups.reduce(
+                  (acc, g) => acc + g.operations.length,
+                  0
+                ) + customRequestsByGroup.websocket.length
+              }
+              open={websocketOpen}
+              onOpenChange={setWebsocketOpen}
+              openApiContent={
+                websocketOpenApiGroups.length > 0 ? (
+                  <OpenApiRequestTree
+                    groups={websocketOpenApiGroups}
+                    selectedOperationId={selectedOperationId}
+                    savedResponsesByOperation={savedResponsesByOperation}
+                    selectedSavedResponseId={selectedSavedResponseId}
+                    loadingSavedResponseId={loadingSavedResponseId}
+                    onSelectOperation={onSelectOperation}
+                    onSelectSavedResponse={onSelectSavedResponse}
+                    onDeleteSavedResponse={onDeleteSavedResponse}
+                  />
+                ) : (
+                  <EmptyProtocolFolder label="WebSocket" />
+                )
+              }
+              customRequests={customRequestsByGroup.websocket}
+              collections={collections}
+              savedResponsesByOperation={savedResponsesByOperation}
+              selectedRequestId={selectedRequestId}
+              selectedSavedResponseId={selectedSavedResponseId}
+              loadingSavedResponseId={loadingSavedResponseId}
+              onSelectCustomRequest={onSelectCustomRequest}
+              onSelectSavedResponse={onSelectSavedResponse}
+              onDeleteSavedResponse={onDeleteSavedResponse}
+              onDeleteCustomRequest={onDeleteCustomRequest}
+              onDeleteCollection={onDeleteCollection}
+            />
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border p-3">
+          <ThemeToggle />
+        </SidebarFooter>
+        <SidebarRail />
+        <RequestImportDialog
+          open={requestDialogOpen}
+          onOpenChange={setRequestDialogOpen}
+          collectionNames={collections.map((collection) => collection.name)}
+          onCreateRequest={onCreateCustomRequest}
+          onImportOpenApi={onImportOpenApi}
+          onSelectCustomRequest={onSelectCustomRequest}
+        />
+      </Sidebar>
+    </TooltipProvider>
   )
 }
 
@@ -472,6 +484,7 @@ function TransportSection({
   onSelectSavedResponse,
   onDeleteSavedResponse,
   onDeleteCustomRequest,
+  onDeleteCollection,
 }: {
   label: string
   icon: React.ReactNode
@@ -489,6 +502,7 @@ function TransportSection({
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
+  onDeleteCollection: (collection: PersistedCollection) => void
 }) {
   const collectionIds = new Set(collections.map((collection) => collection.id))
   const manualRequests = customRequests.filter(
@@ -536,6 +550,7 @@ function TransportSection({
                 onSelectSavedResponse={onSelectSavedResponse}
                 onDeleteSavedResponse={onDeleteSavedResponse}
                 onDeleteCustomRequest={onDeleteCustomRequest}
+                onDeleteCollection={onDeleteCollection}
               />
             ) : null
           })}
@@ -590,6 +605,7 @@ function ImportedCollectionSection({
   onSelectSavedResponse,
   onDeleteSavedResponse,
   onDeleteCustomRequest,
+  onDeleteCollection,
 }: {
   collection: PersistedCollection
   requests: PersistedCustomRequest[]
@@ -601,6 +617,7 @@ function ImportedCollectionSection({
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
+  onDeleteCollection: (collection: PersistedCollection) => void
 }) {
   const groups = new Map<string, PersistedCustomRequest[]>()
   for (const request of requests) {
@@ -616,6 +633,7 @@ function ImportedCollectionSection({
       label={collection.name}
       count={requests.length}
       defaultOpen={hasActiveRequest}
+      onDelete={() => onDeleteCollection(collection)}
     >
       <div className="ml-5 border-l border-sidebar-border/80 pl-2">
         {Array.from(groups.entries()).map(([folder, folderRequests]) => (
@@ -658,32 +676,63 @@ function FolderSection({
   label,
   count,
   defaultOpen = false,
+  onDelete,
   children,
 }: {
   label: string
   count: number
   defaultOpen?: boolean
+  onDelete?: () => void
   children: React.ReactNode
 }) {
+  const [open, setOpen] = React.useState(defaultOpen)
+
+  React.useEffect(() => {
+    if (defaultOpen) {
+      setOpen(true)
+    }
+  }, [defaultOpen])
+
   return (
-    <Collapsible
-      defaultOpen={defaultOpen}
-      className="group/fixed-folder [&[data-state=open]>button>svg:first-child]:rotate-90"
-    >
-      <CollapsibleTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full justify-start gap-2 px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <ChevronRightIcon className="w-4 transition-transform" />
-          <FolderClosedIcon className="w-4 text-sidebar-foreground/60" />
-          <span className="truncate text-[13px]">{label}</span>
-          <span className="ml-auto text-[11px] text-sidebar-foreground/60 tabular-nums">
-            {count}
-          </span>
-        </Button>
-      </CollapsibleTrigger>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div className="group/folder-row relative flex items-center">
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full min-w-0 justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <ChevronRightIcon
+              className={cn("transition-transform", open && "rotate-90")}
+            />
+            <FolderClosedIcon className="text-sidebar-foreground/60" />
+            <span className="truncate text-[13px]">{label}</span>
+            <span
+              data-slot="folder-count"
+              className={cn(
+                "ml-auto text-[11px] text-sidebar-foreground/60 tabular-nums transition-opacity",
+                onDelete &&
+                  "group-focus-within/folder-row:opacity-0 group-hover/folder-row:opacity-0"
+              )}
+            >
+              {count}
+            </span>
+          </Button>
+        </CollapsibleTrigger>
+        {onDelete ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Delete ${label} collection`}
+            title={`Delete ${label} collection`}
+            onClick={onDelete}
+            className="pointer-events-none absolute right-1 text-sidebar-foreground/45 opacity-0 group-hover/folder-row:pointer-events-auto group-hover/folder-row:opacity-100 hover:bg-sidebar-accent hover:text-destructive focus-visible:pointer-events-auto focus-visible:opacity-100"
+          >
+            <Trash2Icon />
+          </Button>
+        ) : null}
+      </div>
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
   )
@@ -817,7 +866,7 @@ function CustomRequestItem({
   const requestRow = (
     <div
       className={cn(
-        "group/custom-request flex min-h-8 w-full items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "group/custom-request flex min-h-8 w-full items-center gap-1.5 rounded-none py-1 pr-1 pl-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         isActive &&
           !savedResponseIsActive &&
           "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -841,11 +890,11 @@ function CustomRequestItem({
         variant="ghost"
         data-custom-request-id={request.id}
         onClick={() => onSelectCustomRequest(request)}
-        className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-none px-0 py-0 font-normal hover:bg-transparent"
+        className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-none px-0 py-0 text-left font-normal hover:bg-transparent"
       >
         <span
           className={cn(
-            "w-10 shrink-0 font-mono text-[10px] font-medium tabular-nums",
+            "w-10 shrink-0 text-left font-mono text-[10px] font-medium tabular-nums",
             getTransportClassName(
               request.transport,
               request.mode,
@@ -859,9 +908,21 @@ function CustomRequestItem({
               ? request.method
               : "WS"}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[12px] text-sidebar-foreground">
-          {request.name}
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="min-w-0 flex-1 truncate text-left text-[12px] text-sidebar-foreground">
+              {request.url}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent
+            side="right"
+            sideOffset={8}
+            showArrow={false}
+            className="max-w-sm break-all"
+          >
+            {request.url}
+          </TooltipContent>
+        </Tooltip>
         {request.transport === "websocket" ? (
           <WifiIcon className="size-3.5 text-sidebar-foreground/45" />
         ) : request.mode === "sse" ? (
@@ -902,7 +963,7 @@ function CustomRequestItem({
               <div
                 key={savedResponse.id}
                 className={cn(
-                  "group/response flex min-h-8 items-center gap-1 rounded-md py-1 pr-1 pl-2 transition-colors",
+                  "group/response flex min-h-8 items-center gap-1 rounded-none py-1 pr-1 pl-2 transition-colors",
                   responseIsActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

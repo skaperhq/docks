@@ -13,7 +13,6 @@ import type { LucideIcon } from "lucide-react"
 import type { ApiOperation } from "@/lib/openapi"
 import { apiOperations } from "@/lib/openapi"
 import type { PersistedCustomRequest } from "@/lib/api-reference-actions"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   CommandDialog,

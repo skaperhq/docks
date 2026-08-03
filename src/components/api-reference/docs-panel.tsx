@@ -39,7 +39,7 @@ export function DocsPanel({
   curlCommand?: string
 }) {
   return (
-    <section className="flex max-w-6xl flex-col gap-1">
+    <section className="flex w-full max-w-6xl min-w-0 flex-col gap-1">
       <div>
         <p className="text-sm leading-6 text-foreground/90">
           {operation.description ?? operation.summary}
@@ -90,12 +90,13 @@ export function DocsPanel({
 
 export function CurlExample({ command }: { command: string }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex max-w-full min-w-0 flex-col gap-2">
       <h6 className="text-[13px] font-normal text-foreground/70">cURL</h6>
       <ReadOnlyCodeBlock
         value={command}
         contentType="text/x-shellscript"
         copyLabel="Copy cURL"
+        lineWrapping
       />
     </div>
   )
@@ -175,21 +176,26 @@ function ReadOnlyCodeBlock({
   value,
   contentType,
   copyLabel,
+  lineWrapping = false,
 }: {
   value: string
   contentType: string
   copyLabel: string
+  lineWrapping?: boolean
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-none border border-border bg-background"
-      style={{ height: getCodeBlockHeight(value) }}
+      className="relative max-w-full min-w-0 overflow-hidden rounded-none border border-border bg-background"
+      style={{
+        height: lineWrapping ? 144 : getCodeBlockHeight(value),
+      }}
     >
       <BodyEditor
         value={value}
         contentType={contentType}
         readOnly
-        className="h-full [&_.cm-content]:pr-12"
+        lineWrapping={lineWrapping}
+        className="h-full min-w-0 [&_.cm-content]:pr-12"
       />
       <CopyButton
         value={value}
@@ -262,12 +268,15 @@ export function getCodeBlockHeight(value: string) {
   )
 }
 
-function ResponseSchema({ response }: { response: ApiResponse }) {
+export function ResponseSchema({ response }: { response: ApiResponse }) {
   const schemaFields = formatSchema(response.schema)
 
   if (typeof schemaFields === "string") {
     return (
-      <ScrollArea className="max-h-80 rounded-md border bg-muted">
+      <ScrollArea
+        data-testid="response-schema-scroll-area"
+        className="h-80 w-full max-w-full min-w-0 rounded-md border bg-muted"
+      >
         <div className="p-4 font-mono text-sm text-muted-foreground">
           {schemaFields}
         </div>
@@ -276,8 +285,11 @@ function ResponseSchema({ response }: { response: ApiResponse }) {
   }
 
   return (
-    <ScrollArea className="max-h-80 rounded-none border">
-      <Table>
+    <ScrollArea
+      data-testid="response-schema-scroll-area"
+      className="h-80 w-full max-w-full min-w-0 rounded-none border"
+    >
+      <Table className="min-w-208">
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-48 pl-4 text-muted-foreground">
