@@ -73,7 +73,7 @@ export function CopyPageAction({
         <Button
           type="button"
           variant="outline"
-          className="rounded-r-none"
+          className="rounded-none border-r-0 font-mono uppercase"
           onClick={copyMarkdown}
         >
           {copyStatus === "copied" ? (
@@ -89,13 +89,13 @@ export function CopyPageAction({
               type="button"
               variant="outline"
               size="icon"
-              className="-ml-px rounded-l-none"
+              className="-ml-px rounded-none"
               aria-label="More page Markdown actions"
             >
               <ChevronDownIcon />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuContent align="end" className="min-w-48 rounded-none">
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={() => setViewerOpen(true)}>
                 <FileTextIcon />
@@ -118,7 +118,7 @@ export function CopyPageAction({
               This is the complete Markdown representation of the current page.
             </DialogDescription>
           </DialogHeader>
-          <div className="h-[min(65vh,42rem)] overflow-hidden rounded-md border">
+          <div className="h-[min(65vh,42rem)] overflow-hidden rounded-none border">
             <BodyEditor
               value={markdown}
               contentType="text/markdown"
@@ -128,7 +128,11 @@ export function CopyPageAction({
             />
           </div>
           <DialogFooter>
-            <Button type="button" onClick={copyMarkdown}>
+            <Button
+              type="button"
+              onClick={copyMarkdown}
+              className="rounded-none font-mono uppercase"
+            >
               {copyStatus === "copied" ? (
                 <CheckIcon data-icon="inline-start" />
               ) : (

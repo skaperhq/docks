@@ -13,6 +13,14 @@ async function main() {
     "utf8"
   )
   __testing.validateMigrationSql(migration, "0001_initial.sql")
+  const folderMigration = await readFile(
+    new URL("../migrations/0002_custom_request_folders.sql", import.meta.url),
+    "utf8"
+  )
+  __testing.validateMigrationSql(
+    folderMigration,
+    "0002_custom_request_folders.sql"
+  )
   assert.throws(
     () =>
       __testing.validateMigrationSql(
@@ -49,7 +57,10 @@ async function main() {
     client: { query() {} },
     dryRun: true,
   })
-  assert.deepEqual(dryRun.pending, ["0001_initial"])
+  assert.deepEqual(dryRun.pending, [
+    "0001_initial",
+    "0002_custom_request_folders",
+  ])
   assert.match(dryRun.sql, /CREATE SCHEMA IF NOT EXISTS skaper/)
 
   const pool = new AuthPool()

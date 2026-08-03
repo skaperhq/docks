@@ -35,6 +35,36 @@ describe("authenticated HTTP storage", () => {
     })
   })
 
+  test("forwards atomic collection imports", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ collection: {}, requests: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const adapter = createHttpStorageAdapter("/docs/_storage")
+    const data = {
+      collection: {
+        id: "api",
+        name: "API",
+        position: 0,
+        createdAt: "now",
+        updatedAt: "now",
+      },
+      requests: [],
+    }
+
+    await adapter.createCollectionWithRequests({ data })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/docs/_storage",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "createCollectionWithRequests", data }),
+      })
+    )
+  })
+
   test("surfaces server authorization errors", async () => {
     vi.stubGlobal(
       "fetch",

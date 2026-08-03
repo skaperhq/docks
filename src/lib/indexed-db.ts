@@ -216,6 +216,32 @@ export async function clearStore(
   })
 }
 
+export async function putCollectionWithRequests<TCollection, TRequest>(
+  collection: TCollection,
+  requests: TRequest[],
+  databaseName = DB_NAME
+) {
+  const db = await openSkaperDb(databaseName)
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(
+      [STORE_NAMES.collections, STORE_NAMES.customRequests],
+      "readwrite"
+    )
+    try {
+      transaction.objectStore(STORE_NAMES.collections).put(collection)
+      const requestStore = transaction.objectStore(STORE_NAMES.customRequests)
+      requests.forEach((request) => requestStore.put(request))
+    } catch (error) {
+      transaction.abort()
+      reject(error)
+      return
+    }
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
+}
+
 async function getStore(
   storeName: StoreName,
   mode: IDBTransactionMode,

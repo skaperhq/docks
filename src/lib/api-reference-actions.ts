@@ -30,6 +30,7 @@ export type PersistedCustomRequest = {
   transport: RequestTransport
   mode: RequestMode
   url: string
+  folder?: string
   draft: SerializableRequestDraft
   position: number
   createdAt: string
@@ -61,7 +62,7 @@ type SerializableKeyValueRow = {
   fileNames?: string[]
 }
 
-type SerializableRequestDraft = {
+export type SerializableRequestDraft = {
   params: SerializableKeyValueRow[]
   headers: SerializableKeyValueRow[]
   body: {
@@ -90,6 +91,11 @@ export type ApiWorkspaceState = {
   collections: PersistedCollection[]
   customRequests: PersistedCustomRequest[]
   responsePanelHeight: number
+}
+
+export type PersistedCollectionImport = {
+  collection: PersistedCollection
+  requests: PersistedCustomRequest[]
 }
 
 export type SavedResponseDetail = SavedResponseSummary & {
@@ -175,6 +181,50 @@ export async function createCollection({
   return getDocksStorageAdapter().createCollection({ data: collection })
 }
 
+export async function createCollectionWithRequests({
+  data,
+}: {
+  data: {
+    name: string
+    position: number
+    requests: Array<{
+      name: string
+      method: RequestMethod
+      transport: RequestTransport
+      mode: RequestMode
+      url: string
+      folder?: string
+      draft: SerializableRequestDraft
+      position: number
+    }>
+  }
+}): Promise<PersistedCollectionImport> {
+  const now = new Date().toISOString()
+  const collection: PersistedCollection = {
+    id: createId(),
+    name: data.name,
+    position: data.position,
+    createdAt: now,
+    updatedAt: now,
+  }
+  const requests = data.requests.map((input) => ({
+    ...normalizeRequestConfiguration(input),
+    id: createId(),
+    collectionId: collection.id,
+    name: input.name,
+    url: input.url,
+    folder: input.folder,
+    draft: input.draft,
+    position: input.position,
+    createdAt: now,
+    updatedAt: now,
+  }))
+
+  return getDocksStorageAdapter().createCollectionWithRequests({
+    data: { collection, requests },
+  })
+}
+
 export async function updateCollection({
   data,
 }: {
@@ -210,6 +260,7 @@ export async function createCustomRequest({
     transport: RequestTransport
     mode: RequestMode
     url: string
+    folder?: string
     draft: SerializableRequestDraft
     position: number
   }
@@ -221,6 +272,7 @@ export async function createCustomRequest({
     collectionId: data.collectionId,
     name: data.name,
     url: data.url,
+    folder: data.folder,
     draft: data.draft,
     position: data.position,
     createdAt: now,

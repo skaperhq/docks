@@ -54,7 +54,7 @@ export function DocsPanel({
         </div>
         <Accordion
           type="multiple"
-          className="max-w-full rounded-lg border"
+          className="max-w-full rounded-none border"
           defaultValue={["200"]}
         >
           {operation.responses.map((item) => (
@@ -67,8 +67,8 @@ export function DocsPanel({
                 <span
                   className={cn(
                     Number(item.code) < 400
-                      ? "mr-2 rounded bg-green-700 px-2 py-0.5 text-xs font-medium text-green-100"
-                      : "mr-2 rounded bg-red-700 px-2 py-0.5 text-xs font-medium text-red-100"
+                      ? "mr-2 bg-green-700 px-2 py-0.5 text-xs font-medium text-green-100"
+                      : "mr-2 bg-red-700 px-2 py-0.5 text-xs font-medium text-red-100"
                   )}
                 >
                   {item.code}
@@ -114,7 +114,7 @@ function ResponseDetails({ response }: { response: ApiResponse }) {
               Media type
             </span>
             <Select defaultValue={defaultContentType}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full rounded-none">
                 <SelectValue placeholder="Select media type" />
               </SelectTrigger>
               <SelectContent>
@@ -134,9 +134,13 @@ function ResponseDetails({ response }: { response: ApiResponse }) {
           </div>
 
           <Tabs defaultValue="example" className="gap-3">
-            <TabsList>
-              <TabsTrigger value="example">Example Value</TabsTrigger>
-              <TabsTrigger value="schema">Schema</TabsTrigger>
+            <TabsList className="rounded-none">
+              <TabsTrigger value="example" className="rounded-none">
+                Example Value
+              </TabsTrigger>
+              <TabsTrigger value="schema" className="rounded-none">
+                Schema
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="example">
               <ReadOnlyCodeBlock
@@ -178,7 +182,7 @@ function ReadOnlyCodeBlock({
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-md border border-border bg-background"
+      className="relative overflow-hidden rounded-none border border-border bg-background"
       style={{ height: getCodeBlockHeight(value) }}
     >
       <BodyEditor
@@ -190,7 +194,7 @@ function ReadOnlyCodeBlock({
       <CopyButton
         value={value}
         label={copyLabel}
-        className="absolute top-2 right-2 z-10 bg-background/90 shadow-sm backdrop-blur-sm"
+        className="absolute top-2 right-2 z-10 bg-background/90"
       />
     </div>
   )
@@ -230,7 +234,7 @@ function CopyButton({
       type="button"
       variant="outline"
       size="icon-sm"
-      className={cn("size-7 rounded-md", className)}
+      className={cn("size-7 rounded-none", className)}
       aria-label={copied ? `${label} copied` : label}
       title={copied ? "Copied" : label}
       onClick={handleCopy}
@@ -272,7 +276,7 @@ function ResponseSchema({ response }: { response: ApiResponse }) {
   }
 
   return (
-    <ScrollArea className="max-h-80 rounded-md border">
+    <ScrollArea className="max-h-80 rounded-none border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -359,7 +363,6 @@ function CollapsibleSchemaRow({
                 )}
               />
             )}
-            {!hasDetails && <div className="size-3.5 shrink-0" />}
             {name}
           </div>
         </TableCell>
@@ -368,11 +371,11 @@ function CollapsibleSchemaRow({
         </TableCell>
         <TableCell className="py-3">
           {required ? (
-            <span className="rounded border border-red-900/50 bg-red-900/30 px-1.5 py-0.5 text-xs font-medium text-red-400">
+            <span className="border border-red-900/50 bg-red-900 px-1.5 py-0.5 text-xs font-medium text-white">
               Yes
             </span>
           ) : (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+            <span className="bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
               No
             </span>
           )}

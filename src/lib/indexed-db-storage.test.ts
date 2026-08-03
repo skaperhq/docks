@@ -3,6 +3,87 @@ import { describe, expect, test } from "vitest"
 import { createIndexedDbStorageAdapter } from "./indexed-db-storage"
 
 describe("workspace-scoped IndexedDB storage", () => {
+  test("atomically stores imported collections and requests", async () => {
+    const storage = createIndexedDbStorageAdapter("openapi-import")
+    const collection = {
+      id: "payments",
+      name: "Payments API",
+      position: 0,
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+    }
+    const request = {
+      id: "create-payment",
+      collectionId: collection.id,
+      name: "Create payment",
+      method: "POST" as const,
+      transport: "http" as const,
+      mode: "standard" as const,
+      url: "https://api.example.com/payments",
+      folder: "Payments",
+      draft: {
+        params: [],
+        headers: [],
+        body: { mode: "none", contentType: "", value: "" },
+      },
+      position: 0,
+      createdAt: collection.createdAt,
+      updatedAt: collection.updatedAt,
+    }
+
+    await storage.createCollectionWithRequests({
+      data: { collection, requests: [request] },
+    })
+
+    await expect(storage.getApiWorkspace()).resolves.toMatchObject({
+      collections: [collection],
+      customRequests: [request],
+    })
+  })
+
+  test("rolls back a collection when one imported request cannot be stored", async () => {
+    const storage = createIndexedDbStorageAdapter("failed-openapi-import")
+    const collection = {
+      id: "invalid",
+      name: "Invalid API",
+      position: 0,
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+    }
+    const invalidRequest = {
+      id: "invalid-request",
+      collectionId: collection.id,
+      name: "Invalid",
+      method: "GET" as const,
+      transport: "http" as const,
+      mode: "standard" as const,
+      url: "https://example.com",
+      draft: {
+        params: [],
+        headers: [],
+        body: {
+          mode: "none",
+          contentType: "",
+          value: "",
+          notCloneable: () => undefined,
+        },
+      },
+      position: 0,
+      createdAt: collection.createdAt,
+      updatedAt: collection.updatedAt,
+    }
+
+    await expect(
+      storage.createCollectionWithRequests({
+        data: { collection, requests: [invalidRequest] },
+      })
+    ).rejects.toBeDefined()
+    await expect(storage.getApiWorkspace()).resolves.toMatchObject({
+      collections: [],
+      customRequests: [],
+    })
+  })
+
   test("does not expose environments from another workspace", async () => {
     const workspaceA = createIndexedDbStorageAdapter("repo-a")
     const workspaceB = createIndexedDbStorageAdapter("repo-b")

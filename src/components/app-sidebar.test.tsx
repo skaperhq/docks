@@ -42,6 +42,7 @@ function SidebarUnderTest() {
         selectedOperationId={null}
         selectedRequestId={null}
         savedResponses={[]}
+        collections={[]}
         customRequests={[]}
         onSelectOverview={vi.fn()}
         onSelectEnvironment={vi.fn()}
@@ -50,6 +51,7 @@ function SidebarUnderTest() {
         onDeleteSavedResponse={vi.fn()}
         onDeleteCustomRequest={vi.fn()}
         onCreateCustomRequest={async () => null}
+        onImportOpenApi={async () => null}
         onSelectCustomRequest={vi.fn()}
       />
     </SidebarProvider>
@@ -112,6 +114,7 @@ describe("AppSidebar", () => {
           selectedOperationId={null}
           selectedRequestId="custom:custom-1"
           savedResponses={[savedResponse]}
+          collections={[]}
           customRequests={[customRequest]}
           onSelectOverview={vi.fn()}
           onSelectEnvironment={vi.fn()}
@@ -120,6 +123,7 @@ describe("AppSidebar", () => {
           onDeleteSavedResponse={vi.fn()}
           onDeleteCustomRequest={vi.fn()}
           onCreateCustomRequest={async () => null}
+          onImportOpenApi={async () => null}
           onSelectCustomRequest={vi.fn()}
         />
       </SidebarProvider>
@@ -131,5 +135,60 @@ describe("AppSidebar", () => {
       })
     )
     expect(onSelectSavedResponse).toHaveBeenCalledWith(savedResponse)
+  })
+
+  test("renders imported collections with OpenAPI tag folders", () => {
+    const request = {
+      id: "imported-1",
+      collectionId: "payments-api",
+      name: "Create payment",
+      method: "POST" as const,
+      transport: "http" as const,
+      mode: "standard" as const,
+      url: "https://api.example.com/payments",
+      folder: "Payments",
+      draft: {
+        params: [],
+        headers: [],
+        body: { mode: "none", contentType: "", value: "" },
+      },
+      position: 0,
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+    }
+
+    render(
+      <SidebarProvider>
+        <AppSidebar
+          activePage="workspace"
+          selectedOperationId={null}
+          selectedRequestId="custom:imported-1"
+          savedResponses={[]}
+          collections={[
+            {
+              id: "payments-api",
+              name: "Payments API",
+              position: 0,
+              createdAt: request.createdAt,
+              updatedAt: request.updatedAt,
+            },
+          ]}
+          customRequests={[request]}
+          onSelectOverview={vi.fn()}
+          onSelectEnvironment={vi.fn()}
+          onSelectOperation={vi.fn()}
+          onSelectSavedResponse={vi.fn()}
+          onDeleteSavedResponse={vi.fn()}
+          onDeleteCustomRequest={vi.fn()}
+          onCreateCustomRequest={async () => null}
+          onImportOpenApi={async () => null}
+          onSelectCustomRequest={vi.fn()}
+        />
+      </SidebarProvider>
+    )
+
+    expect(screen.getByText("Payments API")).toBeTruthy()
+    expect(screen.getByText("Payments")).toBeTruthy()
+    expect(screen.getByText("Create payment")).toBeTruthy()
   })
 })

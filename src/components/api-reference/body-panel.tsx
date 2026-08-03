@@ -85,7 +85,7 @@ export function BodyPanel({
             >
               <SelectTrigger
                 aria-label="Raw body type"
-                className="h-8 w-32 border-0 bg-muted px-2 py-1 text-foreground shadow-none"
+                className="h-8 w-32 rounded-none border-0 bg-muted px-2 py-1 text-foreground shadow-none"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -149,7 +149,7 @@ function RequestBodyModeContent({
 }) {
   if (body.mode === "none") {
     return (
-      <div className="flex min-h-64 items-center justify-center rounded-sm border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
+      <div className="flex min-h-64 items-center justify-center rounded-none border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
         This request will be sent without a body.
       </div>
     )
@@ -180,7 +180,7 @@ function RequestBodyModeContent({
 
   if (body.mode === "binary") {
     return (
-      <div className="flex max-w-xl flex-col gap-3 rounded-sm border border-border bg-card p-4">
+      <div className="flex max-w-xl flex-col gap-3 rounded-none border border-border bg-card p-4">
         <div className="text-sm font-medium text-foreground">Binary Body</div>
         <p className="text-sm text-muted-foreground">
           Select a file to send as the raw request payload. File contents stay
@@ -197,7 +197,7 @@ function RequestBodyModeContent({
                 file?.type || body.contentType || "application/octet-stream",
             })
           }}
-          className="max-w-md"
+          className="max-w-md rounded-none"
         />
         <div className="text-xs text-muted-foreground">
           {body.binaryFile
@@ -230,7 +230,7 @@ function RequestBodyModeContent({
   }
 
   return (
-    <div className="min-h-96 flex-1 overflow-hidden rounded-sm border border-border bg-card">
+    <div className="min-h-96 flex-1 overflow-hidden rounded-none border border-border bg-card">
       <BodyEditor
         value={body.value}
         onChange={(value) => updateBody({ value })}
@@ -257,7 +257,7 @@ function GraphqlEditor({
       <div className="text-xs font-medium tracking-wide text-foreground uppercase">
         {label}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-sm border border-border bg-card">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-none border border-border bg-card">
         <BodyEditor
           value={value}
           onChange={onChange}

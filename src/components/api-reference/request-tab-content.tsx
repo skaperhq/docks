@@ -134,7 +134,7 @@ export function RequestTabLabel({
 
 function CustomDocsPanel({ curlCommand }: { curlCommand?: string }) {
   return (
-    <section className="flex min-h-52 flex-col gap-5 rounded-sm border border-border bg-background p-4 text-sm text-muted-foreground">
+    <section className="flex min-h-52 flex-col gap-5 rounded-none border border-border bg-background p-4 text-sm text-muted-foreground">
       <div>
         <h2 className="mb-2 text-base font-medium text-foreground">
           Custom Request

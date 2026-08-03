@@ -73,6 +73,10 @@ await copyFile(
   resolve(root, "migrations/0001_initial.sql"),
   resolve(outputDirectory, "migrations/0001_initial.sql")
 )
+await copyFile(
+  resolve(root, "migrations/0002_custom_request_folders.sql"),
+  resolve(outputDirectory, "migrations/0002_custom_request_folders.sql")
+)
 const mcpCli = await readFile(resolve(root, "scripts/mcp-cli.mjs"), "utf8")
 await writeFile(
   resolve(outputDirectory, "cli.js"),

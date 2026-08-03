@@ -3,6 +3,7 @@ import {
   getAllFromStore,
   getFromStore,
   putInStore,
+  putCollectionWithRequests,
   STORE_NAMES,
 } from "./indexed-db"
 import type {
@@ -282,6 +283,15 @@ export function createIndexedDbStorageAdapter(
         databaseName
       )
 
+      return data
+    },
+
+    async createCollectionWithRequests({ data }) {
+      await putCollectionWithRequests(
+        data.collection,
+        data.requests,
+        databaseName
+      )
       return data
     },
 

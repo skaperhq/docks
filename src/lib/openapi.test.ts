@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import {
   apiOperations,
+  createOpenApiModel,
   formatSchema,
   getEffectiveSecuritySchemeNames,
   getOpenApiRequestMode,
@@ -127,5 +128,50 @@ describe("OpenAPI model", () => {
         documentSecurity
       )
     ).toEqual(["apiKey", "bearerAuth"])
+  })
+
+  test("creates an isolated model from an arbitrary OpenAPI document", () => {
+    const model = createOpenApiModel({
+      openapi: "3.1.0",
+      info: { title: "Imported", version: "1" },
+      security: [{ bearerAuth: [] }],
+      paths: {
+        "/events": {
+          get: {
+            summary: "Watch events",
+            parameters: [
+              {
+                name: "limit",
+                in: "query",
+                schema: { type: "integer", default: 25 },
+              },
+            ],
+            responses: {
+              "200": {
+                content: { "text/event-stream": {} },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: "http", scheme: "bearer" },
+        },
+      },
+    })
+
+    expect(model.info.title).toBe("Imported")
+    expect(model.operations[0]).toEqual(
+      expect.objectContaining({
+        id: "GET /events",
+        requestMode: "sse",
+        securitySchemeNames: ["bearerAuth"],
+      })
+    )
+    expect(model.operations[0]?.queryParameters[0]?.defaultValue).toBe("25")
+    expect(
+      apiOperations.some((operation) => operation.path === "/events")
+    ).toBe(false)
   })
 })

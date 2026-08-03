@@ -24,6 +24,8 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command"
+import { cn } from "@/lib/utils"
+import { getBgMethodClassName, getMethodClassName } from "./api-reference/utils"
 
 export function RequestSearchCommand({
   customRequests,
@@ -83,7 +85,7 @@ export function RequestSearchCommand({
       <Button
         type="button"
         variant="outline"
-        className="w-full justify-start"
+        className="w-full justify-start rounded-none"
         onClick={() => setOpen(true)}
         aria-label="Search API pages and requests"
       >
@@ -101,15 +103,19 @@ export function RequestSearchCommand({
         onOpenChange={setOpen}
         title="Search API documentation"
         description="Search pages, OpenAPI operations, and custom requests."
-        className="max-w-xl"
+        className="max-w-xl rounded-none!"
       >
-        <CommandInput placeholder="Search pages and requests…" />
+        <CommandInput
+          placeholder="Search pages and requests…"
+          className="rouned-none"
+        />
         <CommandList className="max-h-[min(60vh,32rem)]">
           <CommandEmpty>No matching pages or requests.</CommandEmpty>
           <CommandGroup heading="Pages">
             <CommandItem
               value="page overview api documentation home"
               onSelect={() => select(onSelectOverview)}
+              className="rounded-none font-mono uppercase"
             >
               <HomeIcon />
               Overview
@@ -117,6 +123,7 @@ export function RequestSearchCommand({
             <CommandItem
               value="page environment servers variables"
               onSelect={() => select(onSelectEnvironment)}
+              className="rounded-none font-mono uppercase"
             >
               <ContainerIcon />
               Environment
@@ -149,17 +156,24 @@ export function RequestSearchCommand({
                   value={`custom ${request.id} ${request.name} ${request.url} ${request.method} ${request.transport} ${request.mode}`}
                   onSelect={() => select(() => onSelectCustomRequest(request))}
                 >
-                  <Badge variant="outline">
+                  <div
+                    className={cn("px-2 font-mono text-xs", [
+                      getMethodClassName(request.method),
+                      getBgMethodClassName(request.method),
+                    ])}
+                  >
                     {request.transport === "websocket"
                       ? "WS"
                       : request.mode === "sse"
                         ? "SSE"
                         : request.method}
-                  </Badge>
+                  </div>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate">{request.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {request.url}
+                    <span className="block truncate">
+                      {request.name}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        {request.url}
+                      </span>
                     </span>
                   </span>
                 </CommandItem>
@@ -195,12 +209,21 @@ function OperationCommandGroup({
           value={`${operation.id} ${operation.searchText}`}
           onSelect={() => onSelect(operation)}
         >
-          <Icon />
-          <Badge variant="outline">{operation.method}</Badge>
+          <Icon className="size-4" strokeWidth={1} />
+          <div
+            className={cn("px-2 font-mono text-xs", [
+              getMethodClassName(operation.method),
+              getBgMethodClassName(operation.method),
+            ])}
+          >
+            {operation.method}
+          </div>
           <span className="min-w-0 flex-1">
-            <span className="block truncate">{operation.summary}</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {operation.path} · {operation.tag}
+            <span className="block truncate">
+              {operation.summary}{" "}
+              <span className="text-xs text-muted-foreground">
+                {operation.path}
+              </span>
             </span>
           </span>
         </CommandItem>

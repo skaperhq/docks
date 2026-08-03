@@ -54,7 +54,7 @@ type ResponseObject = {
   content?: Record<string, MediaTypeObject>
 }
 
-type ParameterObject = {
+export type ParameterObject = {
   name: string
   in: "query" | "header" | "path" | "cookie"
   description?: string
@@ -90,7 +90,7 @@ type OperationObject = {
   security?: SecurityRequirementObject[]
 }
 
-type OpenApiSpec = {
+export type OpenApiSpec = {
   openapi?: string
   swagger?: string
   info: {
@@ -228,7 +228,7 @@ function isHttpMethod(value: string): value is HttpMethod {
 }
 
 function getRefName(ref: string) {
-  return ref.split("/").at(-1)
+  return ref.split("/").at(-1)?.replaceAll("~1", "/").replaceAll("~0", "~")
 }
 
 function isReferenceObject(value: unknown): value is ReferenceObject {
@@ -240,7 +240,10 @@ function isReferenceObject(value: unknown): value is ReferenceObject {
   )
 }
 
-function resolveSchema(schema: SchemaObject | ReferenceObject | undefined): {
+function resolveSchema(
+  schema: SchemaObject | ReferenceObject | undefined,
+  spec: OpenApiSpec = openApiSpec
+): {
   schema?: SchemaObject
   name?: string
 } {
@@ -252,7 +255,10 @@ function resolveSchema(schema: SchemaObject | ReferenceObject | undefined): {
     const name = getRefName(schema.$ref)
     return {
       name,
-      schema: name ? openApiSpec.components?.schemas?.[name] : undefined,
+      schema:
+        name && schema.$ref.startsWith("#/components/schemas/")
+          ? spec.components?.schemas?.[name]
+          : undefined,
     }
   }
 
@@ -279,7 +285,10 @@ function resolveParameter(
   return parameter
 }
 
-function getFirstRequestSchema(requestBody: RequestBodyObject | undefined) {
+function getFirstRequestSchema(
+  requestBody: RequestBodyObject | undefined,
+  spec: OpenApiSpec = openApiSpec
+) {
   const entries = Object.entries(requestBody?.content ?? {})
   if (entries.length === 0) {
     return {}
@@ -287,7 +296,7 @@ function getFirstRequestSchema(requestBody: RequestBodyObject | undefined) {
 
   const [contentType, mediaType] =
     entries.find(([type]) => type === "application/json") ?? entries[0]
-  const { schema, name } = resolveSchema(mediaType.schema)
+  const { schema, name } = resolveSchema(mediaType.schema, spec)
 
   return {
     contentType,
@@ -296,12 +305,15 @@ function getFirstRequestSchema(requestBody: RequestBodyObject | undefined) {
     example:
       mediaType.example !== undefined
         ? mediaType.example
-        : createSchemaExample(schema),
+        : createOpenApiSchemaExample(schema, new Set(), spec),
   }
 }
 
-function describeSchema(schema: SchemaObject | ReferenceObject | undefined) {
-  const resolved = resolveSchema(schema).schema
+function describeSchema(
+  schema: SchemaObject | ReferenceObject | undefined,
+  spec: OpenApiSpec = openApiSpec
+) {
+  const resolved = resolveSchema(schema, spec).schema
 
   if (!resolved) {
     return "unknown"
@@ -331,36 +343,47 @@ function getRequestUrl(path: string) {
   return `${path}`
 }
 
-function getOperationParameters(operation: OperationObject): ApiParameter[] {
+function getOperationParameters(
+  operation: OperationObject,
+  spec: OpenApiSpec = openApiSpec
+): ApiParameter[] {
   return (operation.parameters ?? []).flatMap((parameter) => {
     const resolvedParameter = resolveParameter(parameter)
     if (!resolvedParameter) {
       return []
     }
 
-    const schema = resolveSchema(resolvedParameter.schema).schema
-
-    return [
-      {
-        name: resolvedParameter.name,
-        location: resolvedParameter.in,
-        required: Boolean(resolvedParameter.required),
-        type: describeSchema(resolvedParameter.schema),
-        description: resolvedParameter.description,
-        defaultValue: formatDefaultValue(schema?.default),
-        enum: schema?.enum,
-        pattern: schema?.pattern,
-        minimum: schema?.minimum,
-        maximum: schema?.maximum,
-        minLength: schema?.minLength,
-        maxLength: schema?.maxLength,
-        example: schema?.example,
-      },
-    ]
+    return [createOpenApiParameter(resolvedParameter, spec)]
   })
 }
 
-function getFirstResponseSchema(response: ResponseObject) {
+export function createOpenApiParameter(
+  parameter: ParameterObject,
+  spec: OpenApiSpec = openApiSpec
+): ApiParameter {
+  const schema = resolveSchema(parameter.schema, spec).schema
+
+  return {
+    name: parameter.name,
+    location: parameter.in,
+    required: Boolean(parameter.required),
+    type: describeSchema(parameter.schema, spec),
+    description: parameter.description,
+    defaultValue: formatDefaultValue(schema?.default),
+    enum: schema?.enum,
+    pattern: schema?.pattern,
+    minimum: schema?.minimum,
+    maximum: schema?.maximum,
+    minLength: schema?.minLength,
+    maxLength: schema?.maxLength,
+    example: schema?.example,
+  }
+}
+
+function getFirstResponseSchema(
+  response: ResponseObject,
+  spec: OpenApiSpec = openApiSpec
+) {
   const entries = Object.entries(response.content ?? {})
   if (entries.length === 0) {
     return {}
@@ -368,7 +391,7 @@ function getFirstResponseSchema(response: ResponseObject) {
 
   const [contentType, mediaType] =
     entries.find(([type]) => type === "application/json") ?? entries[0]
-  const { schema, name } = resolveSchema(mediaType.schema)
+  const { schema, name } = resolveSchema(mediaType.schema, spec)
 
   return {
     contentType,
@@ -377,13 +400,16 @@ function getFirstResponseSchema(response: ResponseObject) {
     example:
       mediaType.example !== undefined
         ? mediaType.example
-        : createSchemaExample(schema),
+        : createOpenApiSchemaExample(schema, new Set(), spec),
   }
 }
 
-function getOperationResponses(operation: OperationObject): ApiResponse[] {
+function getOperationResponses(
+  operation: OperationObject,
+  spec: OpenApiSpec = openApiSpec
+): ApiResponse[] {
   return Object.entries(operation.responses ?? {}).map(([code, response]) => {
-    const responseSchema = getFirstResponseSchema(response)
+    const responseSchema = getFirstResponseSchema(response, spec)
 
     return {
       code,
@@ -396,9 +422,10 @@ function getOperationResponses(operation: OperationObject): ApiResponse[] {
   })
 }
 
-function createSchemaExample(
+export function createOpenApiSchemaExample(
   schema: SchemaObject | ReferenceObject | undefined,
-  seenRefs = new Set<string>()
+  seenRefs = new Set<string>(),
+  spec: OpenApiSpec = openApiSpec
 ): unknown {
   if (!schema) {
     return null
@@ -410,12 +437,20 @@ function createSchemaExample(
     }
 
     const name = getRefName(schema.$ref)
-    const resolved = name ? openApiSpec.components?.schemas?.[name] : undefined
-    return createSchemaExample(resolved, new Set([...seenRefs, schema.$ref]))
+    const resolved = name ? spec.components?.schemas?.[name] : undefined
+    return createOpenApiSchemaExample(
+      resolved,
+      new Set([...seenRefs, schema.$ref]),
+      spec
+    )
   }
 
   if (schema.example !== undefined) {
     return schema.example
+  }
+
+  if (schema.default !== undefined) {
+    return schema.default
   }
 
   if (schema.enum?.[0] !== undefined) {
@@ -424,7 +459,7 @@ function createSchemaExample(
 
   if (schema.allOf?.length) {
     return schema.allOf.reduce<Record<string, unknown>>((example, item) => {
-      const itemExample = createSchemaExample(item, seenRefs)
+      const itemExample = createOpenApiSchemaExample(item, seenRefs, spec)
       if (
         typeof itemExample === "object" &&
         itemExample !== null &&
@@ -437,17 +472,22 @@ function createSchemaExample(
     }, {})
   }
 
+  const branch = schema.oneOf?.[0] ?? schema.anyOf?.[0]
+  if (branch) {
+    return createOpenApiSchemaExample(branch, seenRefs, spec)
+  }
+
   if (schema.properties) {
     return Object.fromEntries(
       Object.entries(schema.properties).map(([name, property]) => [
         name,
-        createSchemaExample(property, seenRefs),
+        createOpenApiSchemaExample(property, seenRefs, spec),
       ])
     )
   }
 
   if (schema.type === "array") {
-    return [createSchemaExample(schema.items, seenRefs)]
+    return [createOpenApiSchemaExample(schema.items, seenRefs, spec)]
   }
 
   if (schema.type === "boolean") {
@@ -481,86 +521,84 @@ function createSchemaExample(
   return "string"
 }
 
-export const apiInfo = openApiSpec.info
-export const apiSpecVersion =
-  openApiSpec.openapi ?? openApiSpec.swagger ?? "Unknown"
-export const apiServers = openApiSpec.servers ?? []
-export const apiTags = openApiSpec.tags ?? []
+function createSecuritySchemes(spec: OpenApiSpec): ApiSecurityScheme[] {
+  return Object.entries(spec.components?.securitySchemes ?? {}).flatMap(
+    ([id, scheme]) => {
+      if (isReferenceObject(scheme)) {
+        return []
+      }
 
-export const apiSecuritySchemes: ApiSecurityScheme[] = Object.entries(
-  openApiSpec.components?.securitySchemes ?? {}
-).flatMap(([id, scheme]) => {
-  if (isReferenceObject(scheme)) {
-    return []
-  }
+      const normalizedScheme = scheme.scheme?.toLowerCase()
+      const label =
+        normalizedScheme === "bearer"
+          ? `Bearer${scheme.bearerFormat ? ` (${scheme.bearerFormat})` : ""}`
+          : normalizedScheme === "basic"
+            ? "HTTP Basic"
+            : scheme.type === "apiKey"
+              ? `API key${scheme.name ? ` (${scheme.name})` : ""}`
+              : scheme.type === "openIdConnect"
+                ? "OpenID Connect"
+                : scheme.type === "oauth2"
+                  ? "OAuth 2.0"
+                  : id
 
-  const normalizedScheme = scheme.scheme?.toLowerCase()
-  const label =
-    normalizedScheme === "bearer"
-      ? `Bearer${scheme.bearerFormat ? ` (${scheme.bearerFormat})` : ""}`
-      : normalizedScheme === "basic"
-        ? "HTTP Basic"
-        : scheme.type === "apiKey"
-          ? `API key${scheme.name ? ` (${scheme.name})` : ""}`
-          : scheme.type === "openIdConnect"
-            ? "OpenID Connect"
-            : scheme.type === "oauth2"
-              ? "OAuth 2.0"
-              : id
+      return [
+        {
+          id,
+          label,
+          type: scheme.type,
+          description: scheme.description,
+          location: scheme.in,
+          parameterName: scheme.name,
+          scheme: scheme.scheme,
+          bearerFormat: scheme.bearerFormat,
+          openIdConnectUrl: scheme.openIdConnectUrl,
+        },
+      ]
+    }
+  )
+}
 
+function createResources(spec: OpenApiSpec): ApiResource[] {
   return [
-    {
-      id,
-      label,
-      type: scheme.type,
-      description: scheme.description,
-      location: scheme.in,
-      parameterName: scheme.name,
-      scheme: scheme.scheme,
-      bearerFormat: scheme.bearerFormat,
-      openIdConnectUrl: scheme.openIdConnectUrl,
-    },
+    ...(spec.externalDocs
+      ? [
+          {
+            label: spec.externalDocs.description ?? "Documentation",
+            url: spec.externalDocs.url,
+            description: "External documentation",
+          },
+        ]
+      : []),
+    ...(spec.info.contact?.url
+      ? [
+          {
+            label: spec.info.contact.name ?? "Support",
+            url: spec.info.contact.url,
+            description: "API contact",
+          },
+        ]
+      : []),
+    ...(spec.info.contact?.email
+      ? [
+          {
+            label: spec.info.contact.name ?? "Email support",
+            url: `mailto:${spec.info.contact.email}`,
+            description: spec.info.contact.email,
+          },
+        ]
+      : []),
+    ...(spec.info.license?.url
+      ? [
+          {
+            label: spec.info.license.name,
+            url: spec.info.license.url,
+            description: "License",
+          },
+        ]
+      : []),
   ]
-})
-
-export const apiResources: ApiResource[] = [
-  ...(openApiSpec.externalDocs
-    ? [
-        {
-          label: openApiSpec.externalDocs.description ?? "Documentation",
-          url: openApiSpec.externalDocs.url,
-          description: "External documentation",
-        },
-      ]
-    : []),
-  ...(openApiSpec.info.contact?.url
-    ? [
-        {
-          label: openApiSpec.info.contact.name ?? "Support",
-          url: openApiSpec.info.contact.url,
-          description: "API contact",
-        },
-      ]
-    : []),
-  ...(openApiSpec.info.contact?.email
-    ? [
-        {
-          label: openApiSpec.info.contact.name ?? "Email support",
-          url: `mailto:${openApiSpec.info.contact.email}`,
-          description: openApiSpec.info.contact.email,
-        },
-      ]
-    : []),
-  ...(openApiSpec.info.license?.url
-    ? [
-        {
-          label: openApiSpec.info.license.name,
-          url: openApiSpec.info.license.url,
-          description: "License",
-        },
-      ]
-    : []),
-]
+}
 
 export function getEffectiveSecuritySchemeNames(
   operationSecurity: SecurityRequirementObject[] | undefined,
@@ -576,8 +614,8 @@ export function getEffectiveSecuritySchemeNames(
   )
 }
 
-export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
-  ([path, methods]) =>
+function createOperations(spec: OpenApiSpec): ApiOperation[] {
+  return Object.entries(spec.paths).flatMap(([path, methods]) =>
     Object.entries(methods).flatMap(([method, operation]) => {
       if (!isHttpMethod(method)) {
         return []
@@ -585,19 +623,19 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
 
       const requestBody = resolveRequestBody(operation.requestBody)
       const requestContentTypes = Object.keys(requestBody?.content ?? {})
-      const requestSchema = getFirstRequestSchema(requestBody)
-      const parameters = getOperationParameters(operation)
+      const requestSchema = getFirstRequestSchema(requestBody, spec)
+      const parameters = getOperationParameters(operation, spec)
       const tag = operation.tags?.[0] ?? "Other"
       const summary = operation.summary ?? operation.operationId ?? path
       const responseCodes = Object.keys(operation.responses ?? {})
-      const responses = getOperationResponses(operation)
+      const responses = getOperationResponses(operation, spec)
       const { requestMode, hasEventStreamResponse } = getOpenApiRequestMode(
         method,
         responses
       )
       const securitySchemeNames = getEffectiveSecuritySchemeNames(
         operation.security,
-        openApiSpec.security
+        spec.security
       )
 
       return [
@@ -650,7 +688,8 @@ export const apiOperations = Object.entries(openApiSpec.paths).flatMap(
         },
       ]
     })
-)
+  )
+}
 
 /** Detects native SSE operations from their advertised response content type. */
 export function getOpenApiRequestMode(
@@ -673,6 +712,44 @@ export function getOpenApiRequestMode(
     hasEventStreamResponse,
   }
 }
+
+export type OpenApiModel = {
+  info: OpenApiSpec["info"]
+  specVersion: string
+  servers: NonNullable<OpenApiSpec["servers"]>
+  tags: NonNullable<OpenApiSpec["tags"]>
+  securitySchemes: ApiSecurityScheme[]
+  resources: ApiResource[]
+  operations: ApiOperation[]
+}
+
+/**
+ * Parses an OpenAPI document into the model used by the documentation UI.
+ * Keeping this transformation pure lets imports reuse the same operation,
+ * parameter, security, example, and streaming semantics without replacing the
+ * configured document.
+ */
+export function createOpenApiModel(document: OpenApiSpec): OpenApiModel {
+  return {
+    info: document.info,
+    specVersion: document.openapi ?? document.swagger ?? "Unknown",
+    servers: document.servers ?? [],
+    tags: document.tags ?? [],
+    securitySchemes: createSecuritySchemes(document),
+    resources: createResources(document),
+    operations: createOperations(document),
+  }
+}
+
+const configuredApiModel = createOpenApiModel(openApiSpec)
+
+export const apiInfo = configuredApiModel.info
+export const apiSpecVersion = configuredApiModel.specVersion
+export const apiServers = configuredApiModel.servers
+export const apiTags = configuredApiModel.tags
+export const apiSecuritySchemes = configuredApiModel.securitySchemes
+export const apiResources = configuredApiModel.resources
+export const apiOperations = configuredApiModel.operations
 
 /**
  * Groups the parsed operations by OpenAPI tag after applying sidebar filters.
@@ -701,7 +778,7 @@ export function getOperationGroups({
 
   const groups = new Map<string, ApiOperation[]>()
 
-  for (const tag of openApiSpec.tags ?? []) {
+  for (const tag of apiTags) {
     groups.set(tag.name, [])
   }
 

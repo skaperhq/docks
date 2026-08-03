@@ -150,7 +150,7 @@ export function ResponseBar({
       value={activeResponseTab}
       onValueChange={setActiveResponseTab}
       style={{ height }}
-      className="relative shrink-0 gap-0 overflow-hidden rounded-t-lg border border-b-0 border-border bg-background text-foreground"
+      className="relative shrink-0 gap-0 overflow-hidden border border-b-0 border-l-0 border-border bg-background text-foreground"
     >
       <div
         role="separator"
@@ -161,9 +161,9 @@ export function ResponseBar({
       />
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
         <div className="min-w-0 overflow-x-auto">
-          <TabsList variant="default" className="shrink-0 rounded-md">
+          <TabsList variant="default" className="shrink-0 rounded-none">
             {isWebSocket ? (
-              <TabsTrigger value="Messages">
+              <TabsTrigger value="Messages" className="rounded-none">
                 Messages{" "}
                 {result?.websocketFrames?.length ? (
                   <span>({result.websocketFrames.length})</span>
@@ -172,18 +172,26 @@ export function ResponseBar({
             ) : (
               <>
                 {isSse ? (
-                  <TabsTrigger value="EventStream">EventStream</TabsTrigger>
+                  <TabsTrigger value="EventStream" className="rounded-none">
+                    EventStream
+                  </TabsTrigger>
                 ) : null}
-                <TabsTrigger value="Body">Body</TabsTrigger>
-                <TabsTrigger value="Cookies">Cookies</TabsTrigger>
-                <TabsTrigger value="Headers">
+                <TabsTrigger value="Body" className="rounded-none">
+                  Body
+                </TabsTrigger>
+                <TabsTrigger value="Cookies" className="rounded-none">
+                  Cookies
+                </TabsTrigger>
+                <TabsTrigger value="Headers" className="rounded-none">
                   Headers{" "}
                   {result ? <span>({result.headers.length})</span> : null}
                 </TabsTrigger>
               </>
             )}
             {curlCommand ? (
-              <TabsTrigger value="Request">Request</TabsTrigger>
+              <TabsTrigger value="Request" className="rounded-none">
+                Request
+              </TabsTrigger>
             ) : null}
           </TabsList>
         </div>
@@ -193,7 +201,7 @@ export function ResponseBar({
             <Button
               type="button"
               variant="outline"
-              className="h-8 shrink-0 gap-2 rounded-md bg-background px-3"
+              className="h-8 shrink-0 gap-2 rounded-none bg-background px-3 font-mono uppercase"
               onClick={() => setSaveDialogOpen(true)}
               disabled={!result || saveDisabled}
               aria-label="Save response"
@@ -215,20 +223,20 @@ export function ResponseBar({
               <span
                 className={
                   result.ok || (isWebSocket && result.status === 101)
-                    ? "rounded-md bg-emerald-500/10 px-3 py-1 font-normal text-emerald-600 dark:text-emerald-400"
-                    : "rounded-md bg-rose-500/10 px-3 py-1 font-normal text-rose-600 dark:text-rose-400"
+                    ? "rounded-none bg-emerald-500/10 px-3 py-1 font-mono font-normal text-emerald-600 uppercase dark:text-emerald-400"
+                    : "rounded-none bg-rose-500/10 px-3 py-1 font-mono font-normal text-rose-600 uppercase dark:text-rose-400"
                 }
               >
                 {result.status}{" "}
                 {result.statusText || statusLabel(result.status)}
               </span>
               <span>•</span>
-              <span>{result.durationMs} ms</span>
+              <span className="font-mono">{result.durationMs} ms</span>
               <span>•</span>
-              <span>{formatBytes(result.sizeBytes)}</span>
+              <span className="font-mono">{formatBytes(result.sizeBytes)}</span>
             </>
           ) : error ? (
-            <span className="rounded-md bg-rose-500/10 px-3 py-1 font-medium text-rose-500">
+            <span className="rounded-none bg-rose-500/10 px-3 py-1 font-mono font-medium text-rose-500 uppercase">
               Request failed
             </span>
           ) : (
@@ -298,7 +306,7 @@ export function ResponseBar({
         ) : null}
         {curlCommand ? (
           <TabsContent value="Request" className="m-0 flex h-full flex-col">
-            <div className="flex h-11 shrink-0 items-center justify-between px-7 text-sm text-muted-foreground">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b px-7 text-sm text-muted-foreground">
               <span>cURL for the request that produced this response</span>
               <Button
                 type="button"
@@ -323,7 +331,7 @@ export function ResponseBar({
       {toastMessage ? (
         <div
           role="status"
-          className="absolute right-4 bottom-4 z-50 rounded-md border border-border bg-popover px-3 py-2 text-sm text-popover-foreground"
+          className="absolute right-4 bottom-4 z-50 rounded-none border border-border bg-popover px-3 py-2 text-sm text-popover-foreground"
         >
           {toastMessage}
         </div>
@@ -332,7 +340,9 @@ export function ResponseBar({
       <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save Response</DialogTitle>
+            <DialogTitle className="font-mono uppercase">
+              Save Response
+            </DialogTitle>
             <DialogDescription>
               Name this response snapshot before saving it.
             </DialogDescription>
@@ -354,14 +364,23 @@ export function ResponseBar({
               onChange={(event) => setSaveName(event.target.value)}
               autoFocus
               placeholder="Response name"
+              className="rounded-none"
             />
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-none font-mono uppercase"
+                >
                   Cancel
                 </Button>
               </DialogClose>
-              <Button type="submit" disabled={!saveName.trim() || saveDisabled}>
+              <Button
+                type="submit"
+                disabled={!saveName.trim() || saveDisabled}
+                className="rounded-none font-mono uppercase"
+              >
                 {saveDisabled ? (
                   <LoaderCircleIcon className="animate-spin" />
                 ) : null}
@@ -465,7 +484,7 @@ function SseEventsView({
           placeholder="Filter using regex (example: https?)"
           aria-label="Filter SSE events using regex"
           aria-invalid={!isValid}
-          className="h-7 max-w-sm"
+          className="h-7 max-w-sm rounded-none"
         />
       </div>
       <ScrollArea className="min-h-0 flex-1">
@@ -631,10 +650,10 @@ function WebSocketMessagesView({
                       )}
                       <span className="truncate">{frame.data}</span>
                     </span>
-                    <span className="text-right tabular-nums">
+                    <span className="text-right font-mono tabular-nums">
                       {frame.sizeBytes}
                     </span>
-                    <span className="text-right text-muted-foreground tabular-nums">
+                    <span className="text-right font-mono text-muted-foreground tabular-nums">
                       {formatFrameTime(frame.timestamp)}
                     </span>
                   </button>
@@ -710,9 +729,12 @@ function ResponseBodyToolbar({
   onCopy: () => void
 }) {
   return (
-    <div className="flex h-11 items-center justify-between px-7 text-muted-foreground">
+    <div className="flex h-11 items-center justify-between border-b border-border px-3 text-muted-foreground">
       <div className="flex items-center gap-5">
-        <Button variant="secondary" className="h-8 gap-2 rounded-md px-3">
+        <Button
+          variant="secondary"
+          className="h-8 gap-2 rounded-none px-3 font-mono uppercase"
+        >
           <BracesIcon className="size-4" />
           {contentType?.includes("json") ? "JSON" : "Text"}
         </Button>

@@ -118,18 +118,18 @@ export function getMethodClassName(method: string) {
 export function getBgMethodClassName(method: string) {
   switch (method) {
     case "GET":
-      return "bg-emerald-50 dark:bg-[#003415]"
+      return "bg-emerald-50 dark:bg-[#003415] border border-emerald-200 dark:border-[#6bdd9a]/30"
     case "POST":
-      return "bg-amber-50 dark:bg-[#3a2b00]"
+      return "bg-amber-50 dark:bg-[#3a2b00] border border-amber-200 dark:border-[#f5d36b]/30"
     case "PUT":
     case "PATCH":
-      return "bg-blue-50 dark:bg-[#00274d]"
+      return "bg-blue-50 dark:bg-[#00274d] border border-blue-200 dark:border-[#74aef6]/30"
     case "DELETE":
-      return "bg-rose-50 dark:bg-[#4d1a00]"
+      return "bg-rose-50 dark:bg-[#4d1a00] border border-rose-200 dark:border-[#ff8d7a]/30"
     case "WS":
-      return "bg-violet-50 dark:bg-[#2e1065]"
+      return "bg-violet-50 dark:bg-[#2e1065] border border-violet-200 dark:border-[#2e1065]/30"
     default:
-      return "bg-muted"
+      return "bg-muted border dark:bg-muted-foreground/10 border-border"
   }
 }
 

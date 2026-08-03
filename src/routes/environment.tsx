@@ -137,6 +137,7 @@ export function EnvironmentPage({
         activePage="environment"
         selectedOperationId={null}
         savedResponses={[]}
+        collections={[]}
         customRequests={[]}
         selectedRequestId={null}
         onSelectOverview={onSelectWorkspace}
@@ -148,6 +149,7 @@ export function EnvironmentPage({
         onDeleteSavedResponse={() => {}}
         onDeleteCustomRequest={() => {}}
         onCreateCustomRequest={async () => null}
+        onImportOpenApi={async () => null}
         onSelectCustomRequest={(request) =>
           onSelectOperation(`custom:${request.id}`)
         }
@@ -183,7 +185,7 @@ export function EnvironmentPage({
           {/* Left panel: Environment list */}
           <div className="flex max-h-64 w-full shrink-0 flex-col border-b border-border bg-card/40 md:max-h-none md:w-[18rem] md:border-b-0">
             <div className="flex items-center justify-between border-b border-border p-4">
-              <span className="text-sm font-normal text-muted-foreground">
+              <span className="font-mono text-sm font-normal text-muted-foreground uppercase">
                 Add Environment
               </span>
               <Button
@@ -202,14 +204,14 @@ export function EnvironmentPage({
                 {showAddPrompt && (
                   <form
                     onSubmit={handleCreateEnv}
-                    className="mb-3 space-y-2 rounded-md border border-primary/30 bg-background/50 p-2"
+                    className="mb-3 space-y-2 rounded-none border border-border bg-background/50 p-2"
                   >
                     <Input
                       autoFocus
                       placeholder="Env name..."
                       value={newEnvName}
                       onChange={(e) => setNewEnvName(e.target.value)}
-                      className="h-8 text-xs"
+                      className="h-8 rounded-none text-xs"
                     />
                     <div className="flex justify-end gap-1.5">
                       <Button
@@ -220,14 +222,14 @@ export function EnvironmentPage({
                           setShowAddPrompt(false)
                           setNewEnvName("")
                         }}
-                        className="h-7 px-2 text-xs"
+                        className="h-7 rounded-none px-2 text-xs"
                       >
                         Cancel
                       </Button>
                       <Button
                         type="submit"
                         size="sm"
-                        className="h-7 px-2 text-xs"
+                        className="h-7 rounded-none px-2 text-xs"
                         disabled={!newEnvName.trim()}
                       >
                         Create
@@ -241,7 +243,7 @@ export function EnvironmentPage({
                   return (
                     <div
                       key={env.id}
-                      className={`group relative rounded-lg border p-1 transition-colors hover:shadow-sm ${
+                      className={`group relative rounded-none border transition-colors hover:shadow-sm ${
                         isActive
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-border bg-background/40 text-muted-foreground"
@@ -253,17 +255,17 @@ export function EnvironmentPage({
                         aria-pressed={isActive}
                         onClick={() => setActiveEnvironmentId(env.id)}
                         className={cn(
-                          "h-auto w-full flex-col items-stretch gap-1 px-2 py-2 text-left font-normal hover:bg-accent/50",
+                          "h-auto w-full flex-col items-stretch gap-1 rounded-none px-2 py-2 text-left font-normal hover:bg-accent/50",
                           isActive &&
                             "text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
                         )}
                       >
                         <span className="flex items-center justify-between gap-1.5">
-                          <span className="truncate text-[13px]">
+                          <span className="truncate font-mono text-[13px] uppercase">
                             {env.name}
                           </span>
                           {isActive && (
-                            <span className="shrink-0 rounded-full bg-primary-foreground px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                            <span className="shrink-0 bg-primary-foreground px-1.5 py-0.5 font-mono text-[10px] font-medium text-black uppercase">
                               Active
                             </span>
                           )}
@@ -279,7 +281,7 @@ export function EnvironmentPage({
                       </Button>
 
                       {/* Actions */}
-                      <div className="absolute right-2 bottom-2 hidden items-center gap-1 rounded-md border border-border bg-background p-0.5 shadow-sm group-hover:flex">
+                      <div className="absolute right-2 bottom-2 hidden items-center gap-1 border border-border bg-background p-0.5 shadow-sm group-hover:flex">
                         <Button
                           type="button"
                           variant="ghost"
@@ -319,7 +321,7 @@ export function EnvironmentPage({
           </div>
 
           {/* Right panel: Environment editor */}
-          <div className="flex min-h-[32rem] min-w-0 flex-1 flex-col bg-background md:min-h-0">
+          <div className="flex min-h-128 min-w-0 flex-1 flex-col bg-background md:min-h-0">
             {activeEnvironment ? (
               <ScrollArea className="min-h-0 flex-1">
                 <div className="max-w-4xl space-y-8 p-4 sm:p-8">
@@ -337,7 +339,7 @@ export function EnvironmentPage({
                             e.target.value
                           )
                         }
-                        className="h-10 max-w-md bg-card text-[15px] font-normal focus-visible:ring-primary"
+                        className="h-10 max-w-md rounded-none bg-card text-[15px] font-normal focus-visible:ring-primary"
                         placeholder="Production, Staging, etc."
                       />
                     </div>
@@ -355,7 +357,7 @@ export function EnvironmentPage({
                               e.target.value
                             )
                           }
-                          className="h-10 max-w-xl bg-card text-[14px] focus-visible:ring-primary"
+                          className="h-10 max-w-xl rounded-none bg-card text-[14px] focus-visible:ring-primary"
                           placeholder="https://api.example.com"
                         />
                       </div>
@@ -381,7 +383,7 @@ export function EnvironmentPage({
                         variant="default"
                         size="sm"
                         onClick={() => addVariable(activeEnvironment.id)}
-                        className="h-8 gap-1.5"
+                        className="h-8 gap-1.5 rounded-none font-mono uppercase"
                       >
                         <Plus className="size-3.5" />
                         Add Variable
@@ -389,8 +391,8 @@ export function EnvironmentPage({
                     </div>
 
                     {/* Table Grid */}
-                    <div className="w-full max-w-full min-w-0 overflow-x-auto rounded-md border border-border bg-card/20 [contain:inline-size]">
-                      <div className="grid min-w-[52rem] grid-cols-[3rem_12rem_16rem_1fr_3.5rem] border-b border-border bg-background px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                    <div className="w-full max-w-full min-w-0 overflow-x-auto rounded-none border border-border bg-card/20 contain-[inline-size]">
+                      <div className="grid min-w-208 grid-cols-[3rem_12rem_16rem_1fr_3.5rem] border-b border-border bg-background px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
                         <div>Use</div>
                         <div>Variable Key</div>
                         <div>Value</div>
@@ -399,7 +401,7 @@ export function EnvironmentPage({
                       </div>
 
                       {activeEnvironment.variables.length > 0 ? (
-                        <div className="min-w-[52rem] divide-y divide-border">
+                        <div className="min-w-208 divide-y divide-border">
                           {activeEnvironment.variables.map((variable) => {
                             const isSecret = variable.isSecret ?? false
                             const showSecret =
@@ -439,7 +441,7 @@ export function EnvironmentPage({
                                         }
                                       )
                                     }
-                                    className="h-8 border-border/80 bg-background text-[12px] focus-visible:ring-primary"
+                                    className="h-8 rounded-none border-border/80 bg-background text-[12px] focus-visible:ring-primary"
                                     placeholder="variable_key"
                                   />
                                 </div>
@@ -462,7 +464,7 @@ export function EnvironmentPage({
                                         }
                                       )
                                     }
-                                    className="h-8 flex-1 border-border/80 bg-background pr-8 text-[12px] focus-visible:ring-primary"
+                                    className="h-8 flex-1 rounded-none border-border/80 bg-background pr-8 text-[12px] focus-visible:ring-primary"
                                     placeholder="value"
                                   />
                                   <Button
@@ -501,7 +503,7 @@ export function EnvironmentPage({
                                         }
                                       )
                                     }
-                                    className="h-8 border-border/80 bg-background text-[12px] focus-visible:ring-primary"
+                                    className="h-8 rounded-none border-border/80 bg-background text-[12px] focus-visible:ring-primary"
                                     placeholder="e.g. Authentication token"
                                   />
                                 </div>
@@ -539,9 +541,9 @@ export function EnvironmentPage({
                   </div>
 
                   {/* Info alert block */}
-                  <div className="bg-muted-background flex gap-3 rounded-md border p-4 text-xs leading-relaxed text-muted-foreground dark:text-muted-foreground/90">
+                  <div className="bg-muted-background flex gap-3 rounded-none border p-4 text-xs leading-relaxed text-muted-foreground dark:text-muted-foreground/90">
                     <Info className="size-5 shrink-0 text-primary" />
-                    <div className="min-w-0 flex-1 break-words">
+                    <div className="min-w-0 flex-1 wrap-break-word">
                       To reference these variables in your request details, type
                       the variable key wrapped in double curly braces, like{" "}
                       <code className="rounded bg-muted/50 px-1 font-mono">

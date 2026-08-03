@@ -21,6 +21,7 @@ import * as React from "react"
 import Logo from "@/assets/logo.svg"
 import type { SavedResponseSummary } from "@/components/api-reference/types"
 import type {
+  PersistedCollection,
   PersistedCustomRequest,
   RequestMethod,
   RequestMode,
@@ -31,15 +32,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -65,10 +57,16 @@ import { apiOperations, getOperationGroups } from "@/lib/openapi"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { RequestSearchCommand } from "@/components/request-search-command"
+import { RequestImportDialog } from "@/components/request-import-dialog"
+import type {
+  CreateRequestInput,
+  ImportOpenApiInput,
+} from "@/components/request-import-dialog"
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   selectedOperationId: string | null
   savedResponses: SavedResponseSummary[]
+  collections: PersistedCollection[]
   customRequests: PersistedCustomRequest[]
   selectedSavedResponseId?: string | null
   loadingSavedResponseId?: string | null
@@ -80,19 +78,19 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   onSelectSavedResponse: (response: SavedResponseSummary) => void
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
-  onCreateCustomRequest: (input: {
-    name: string
-    method: RequestMethod
-    transport: RequestTransport
-    mode: RequestMode
-    url: string
-  }) => Promise<PersistedCustomRequest | null>
+  onCreateCustomRequest: (
+    input: CreateRequestInput
+  ) => Promise<PersistedCustomRequest | null>
+  onImportOpenApi: (
+    input: ImportOpenApiInput
+  ) => Promise<PersistedCustomRequest[] | null>
   onSelectCustomRequest: (request: PersistedCustomRequest) => void
 }
 
 export function AppSidebar({
   selectedOperationId,
   savedResponses,
+  collections,
   customRequests,
   selectedSavedResponseId,
   loadingSavedResponseId,
@@ -105,6 +103,7 @@ export function AppSidebar({
   onDeleteSavedResponse,
   onDeleteCustomRequest,
   onCreateCustomRequest,
+  onImportOpenApi,
   onSelectCustomRequest,
   ...props
 }: AppSidebarProps) {
@@ -112,15 +111,6 @@ export function AppSidebar({
     useEnvironment()
   const isOverviewRoute = activePage === "workspace"
   const [requestDialogOpen, setRequestDialogOpen] = React.useState(false)
-  const [isCreatingRequest, setIsCreatingRequest] = React.useState(false)
-  const [newRequestName, setNewRequestName] = React.useState("")
-  const [newRequestUrl, setNewRequestUrl] = React.useState("")
-  const [newRequestMethod, setNewRequestMethod] =
-    React.useState<RequestMethod>("GET")
-  const [newRequestTransport, setNewRequestTransport] =
-    React.useState<RequestTransport>("http")
-  const [newRequestMode, setNewRequestMode] =
-    React.useState<RequestMode>("standard")
   const [httpOpen, setHttpOpen] = React.useState(false)
   const [sseOpen, setSseOpen] = React.useState(false)
   const [websocketOpen, setWebsocketOpen] = React.useState(false)
@@ -248,17 +238,6 @@ export function AppSidebar({
               Skaper
             </div>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            onClick={() => setRequestDialogOpen(true)}
-            aria-label="Create custom request"
-            title="Create custom request"
-          >
-            <PlusIcon className="size-4" />
-          </Button>
         </div>
 
         <SidebarGroup className="mt-2 px-2 py-0">
@@ -268,7 +247,7 @@ export function AppSidebar({
               onValueChange={setActiveEnvironmentId}
             >
               <SelectTrigger
-                className="h-8 w-full rounded-sm text-[13px]"
+                className="h-8 w-full rounded-none text-[13px]"
                 aria-label="Select active environment"
               >
                 <SelectValue />
@@ -299,9 +278,9 @@ export function AppSidebar({
             <Button
               type="button"
               onClick={() => setRequestDialogOpen(true)}
-              className="w-full rounded-sm text-sm font-normal"
+              className="w-full rounded-none font-mono text-sm font-normal uppercase"
             >
-              <PlusIcon className="size-3.5" strokeWidth={2} />
+              <PlusIcon className="size-4" strokeWidth={2} />
               Add request
             </Button>
           </SidebarGroupContent>
@@ -320,7 +299,7 @@ export function AppSidebar({
                 : undefined
             }
             className={cn(
-              "w-full justify-start gap-2 px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               isOverviewRoute &&
                 selectedOperationId === null &&
                 selectedRequestId === null &&
@@ -328,20 +307,22 @@ export function AppSidebar({
             )}
           >
             <HomeIcon className="w-4 text-sidebar-foreground/60" />
-            <span className="truncate text-[13px] font-normal">Overview</span>
+            <span className="truncate font-mono text-[13px] font-normal uppercase">
+              Overview
+            </span>
           </Button>
           <Button
             type="button"
             variant="ghost"
             onClick={onSelectEnvironment}
             className={cn(
-              "w-full justify-start gap-2 px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               activePage === "environment" &&
                 "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
             )}
           >
             <Container className="w-4 text-sidebar-foreground/60" />
-            <span className="truncate text-[13px] font-normal">
+            <span className="truncate font-mono text-[13px] font-normal uppercase">
               Environment
             </span>
           </Button>
@@ -374,6 +355,7 @@ export function AppSidebar({
               />
             }
             customRequests={customRequestsByGroup.http}
+            collections={collections}
             savedResponsesByOperation={savedResponsesByOperation}
             selectedRequestId={selectedRequestId}
             selectedSavedResponseId={selectedSavedResponseId}
@@ -407,6 +389,7 @@ export function AppSidebar({
               />
             }
             customRequests={customRequestsByGroup.sse}
+            collections={collections}
             savedResponsesByOperation={savedResponsesByOperation}
             selectedRequestId={selectedRequestId}
             selectedSavedResponseId={selectedSavedResponseId}
@@ -444,6 +427,7 @@ export function AppSidebar({
               )
             }
             customRequests={customRequestsByGroup.websocket}
+            collections={collections}
             savedResponsesByOperation={savedResponsesByOperation}
             selectedRequestId={selectedRequestId}
             selectedSavedResponseId={selectedSavedResponseId}
@@ -459,138 +443,14 @@ export function AppSidebar({
         <ThemeToggle />
       </SidebarFooter>
       <SidebarRail />
-      <Dialog
+      <RequestImportDialog
         open={requestDialogOpen}
-        onOpenChange={(open) => {
-          if (!isCreatingRequest || open) setRequestDialogOpen(open)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Request</DialogTitle>
-            <DialogDescription>
-              Add a custom request alongside the generated OpenAPI workspace.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="flex flex-col gap-3"
-            onSubmit={async (event) => {
-              event.preventDefault()
-              if (!newRequestName.trim() || isCreatingRequest) return
-              setIsCreatingRequest(true)
-              try {
-                const request = await onCreateCustomRequest({
-                  name: newRequestName.trim(),
-                  method: newRequestMethod,
-                  transport: newRequestTransport,
-                  mode: newRequestMode,
-                  url: newRequestUrl.trim(),
-                })
-                if (!request) return
-                onSelectCustomRequest(request)
-                setNewRequestName("")
-                setNewRequestUrl("")
-                setNewRequestMethod("GET")
-                setNewRequestTransport("http")
-                setNewRequestMode("standard")
-                setRequestDialogOpen(false)
-              } finally {
-                setIsCreatingRequest(false)
-              }
-            }}
-          >
-            <Input
-              value={newRequestName}
-              onChange={(event) => setNewRequestName(event.target.value)}
-              placeholder="New request"
-              autoFocus
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <Select
-                value={
-                  newRequestTransport === "websocket"
-                    ? "websocket"
-                    : newRequestMode === "sse"
-                      ? "sse"
-                      : "http"
-                }
-                onValueChange={(value) => {
-                  if (value === "websocket") {
-                    setNewRequestTransport("websocket")
-                    setNewRequestMode("standard")
-                    setNewRequestMethod("GET")
-                  } else if (value === "sse") {
-                    setNewRequestTransport("http")
-                    setNewRequestMode("sse")
-                    setNewRequestMethod("GET")
-                  } else {
-                    setNewRequestTransport("http")
-                    setNewRequestMode("standard")
-                    setNewRequestMethod("GET")
-                  }
-                }}
-              >
-                <SelectTrigger className="h-9 w-full" aria-label="Request type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="http">HTTP</SelectItem>
-                  <SelectItem value="sse">Server-Sent Events</SelectItem>
-                  <SelectItem value="websocket">WebSocket</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={newRequestMethod}
-                onValueChange={(value) =>
-                  setNewRequestMethod(value as RequestMethod)
-                }
-                disabled={newRequestTransport === "websocket"}
-              >
-                <SelectTrigger className="h-9 w-full" aria-label="HTTP method">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[
-                    "GET",
-                    "POST",
-                    "PUT",
-                    "PATCH",
-                    "DELETE",
-                    "HEAD",
-                    "OPTIONS",
-                  ].map((method) => (
-                    <SelectItem key={method} value={method}>
-                      {method}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Input
-              value={newRequestUrl}
-              onChange={(event) => setNewRequestUrl(event.target.value)}
-              placeholder={
-                newRequestTransport === "websocket"
-                  ? "wss://example.com/socket"
-                  : newRequestMode === "sse"
-                    ? "https://example.com/events"
-                    : "https://api.example.com/resource"
-              }
-            />
-            <DialogFooter>
-              <Button
-                type="submit"
-                disabled={!newRequestName.trim() || isCreatingRequest}
-              >
-                {isCreatingRequest ? (
-                  <LoaderCircleIcon className="animate-spin" />
-                ) : null}
-                {isCreatingRequest ? "Creating…" : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        onOpenChange={setRequestDialogOpen}
+        collectionNames={collections.map((collection) => collection.name)}
+        onCreateRequest={onCreateCustomRequest}
+        onImportOpenApi={onImportOpenApi}
+        onSelectCustomRequest={onSelectCustomRequest}
+      />
     </Sidebar>
   )
 }
@@ -603,6 +463,7 @@ function TransportSection({
   onOpenChange,
   openApiContent,
   customRequests,
+  collections,
   savedResponsesByOperation,
   selectedRequestId,
   selectedSavedResponseId,
@@ -619,6 +480,7 @@ function TransportSection({
   onOpenChange: (open: boolean) => void
   openApiContent: React.ReactNode
   customRequests: PersistedCustomRequest[]
+  collections: PersistedCollection[]
   savedResponsesByOperation: Map<string, SavedResponseSummary[]>
   selectedRequestId?: string | null
   selectedSavedResponseId?: string | null
@@ -628,6 +490,10 @@ function TransportSection({
   onDeleteSavedResponse: (response: SavedResponseSummary) => void
   onDeleteCustomRequest: (request: PersistedCustomRequest) => void
 }) {
+  const collectionIds = new Set(collections.map((collection) => collection.id))
+  const manualRequests = customRequests.filter(
+    (request) => !collectionIds.has(request.collectionId)
+  )
   return (
     <Collapsible
       open={open}
@@ -638,12 +504,14 @@ function TransportSection({
         <Button
           type="button"
           variant="ghost"
-          className="w-full justify-start gap-2 px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="w-full justify-start gap-2 rounded-none px-2 font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <ChevronRightIcon className="w-4 transition-transform" />
           {icon}
-          <span className="truncate text-[13px] font-normal">{label}</span>
-          <span className="ml-auto text-[11px] text-sidebar-foreground/60 tabular-nums">
+          <span className="truncate font-mono text-[13px] font-normal uppercase">
+            {label}
+          </span>
+          <span className="ml-auto font-mono text-[11px] text-sidebar-foreground/60 tabular-nums">
             {count}
           </span>
         </Button>
@@ -651,16 +519,36 @@ function TransportSection({
       <CollapsibleContent>
         <div className="ml-5 border-l border-sidebar-border/80 pl-2">
           {openApiContent}
+          {collections.map((collection) => {
+            const requests = customRequests.filter(
+              (request) => request.collectionId === collection.id
+            )
+            return requests.length ? (
+              <ImportedCollectionSection
+                key={collection.id}
+                collection={collection}
+                requests={requests}
+                savedResponsesByOperation={savedResponsesByOperation}
+                selectedRequestId={selectedRequestId}
+                selectedSavedResponseId={selectedSavedResponseId}
+                loadingSavedResponseId={loadingSavedResponseId}
+                onSelectCustomRequest={onSelectCustomRequest}
+                onSelectSavedResponse={onSelectSavedResponse}
+                onDeleteSavedResponse={onDeleteSavedResponse}
+                onDeleteCustomRequest={onDeleteCustomRequest}
+              />
+            ) : null
+          })}
           <FolderSection
             label="Custom"
-            count={customRequests.length}
-            defaultOpen={customRequests.some(
+            count={manualRequests.length}
+            defaultOpen={manualRequests.some(
               (request) => selectedRequestId === getCustomRequestKey(request.id)
             )}
           >
             <div className="ml-5 flex flex-col border-l border-sidebar-border/80 py-1 pl-2">
-              {customRequests.length > 0 ? (
-                customRequests.map((request) => (
+              {manualRequests.length > 0 ? (
+                manualRequests.map((request) => (
                   <CustomRequestItem
                     key={request.id}
                     request={request}
@@ -688,6 +576,81 @@ function TransportSection({
         </div>
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function ImportedCollectionSection({
+  collection,
+  requests,
+  savedResponsesByOperation,
+  selectedRequestId,
+  selectedSavedResponseId,
+  loadingSavedResponseId,
+  onSelectCustomRequest,
+  onSelectSavedResponse,
+  onDeleteSavedResponse,
+  onDeleteCustomRequest,
+}: {
+  collection: PersistedCollection
+  requests: PersistedCustomRequest[]
+  savedResponsesByOperation: Map<string, SavedResponseSummary[]>
+  selectedRequestId?: string | null
+  selectedSavedResponseId?: string | null
+  loadingSavedResponseId?: string | null
+  onSelectCustomRequest: (request: PersistedCustomRequest) => void
+  onSelectSavedResponse: (response: SavedResponseSummary) => void
+  onDeleteSavedResponse: (response: SavedResponseSummary) => void
+  onDeleteCustomRequest: (request: PersistedCustomRequest) => void
+}) {
+  const groups = new Map<string, PersistedCustomRequest[]>()
+  for (const request of requests) {
+    const folder = request.folder?.trim() || "Other"
+    groups.set(folder, [...(groups.get(folder) ?? []), request])
+  }
+  const hasActiveRequest = requests.some(
+    (request) => selectedRequestId === getCustomRequestKey(request.id)
+  )
+
+  return (
+    <FolderSection
+      label={collection.name}
+      count={requests.length}
+      defaultOpen={hasActiveRequest}
+    >
+      <div className="ml-5 border-l border-sidebar-border/80 pl-2">
+        {Array.from(groups.entries()).map(([folder, folderRequests]) => (
+          <FolderSection
+            key={folder}
+            label={folder}
+            count={folderRequests.length}
+            defaultOpen={folderRequests.some(
+              (request) => selectedRequestId === getCustomRequestKey(request.id)
+            )}
+          >
+            <div className="ml-5 flex flex-col border-l border-sidebar-border/80 py-1 pl-2">
+              {folderRequests.map((request) => (
+                <CustomRequestItem
+                  key={request.id}
+                  request={request}
+                  isActive={
+                    selectedRequestId === getCustomRequestKey(request.id)
+                  }
+                  savedResponses={savedResponsesByOperation.get(
+                    getCustomRequestKey(request.id)
+                  )}
+                  selectedSavedResponseId={selectedSavedResponseId}
+                  loadingSavedResponseId={loadingSavedResponseId}
+                  onSelectCustomRequest={onSelectCustomRequest}
+                  onSelectSavedResponse={onSelectSavedResponse}
+                  onDeleteSavedResponse={onDeleteSavedResponse}
+                  onDeleteCustomRequest={onDeleteCustomRequest}
+                />
+              ))}
+            </div>
+          </FolderSection>
+        ))}
+      </div>
+    </FolderSection>
   )
 }
 
@@ -761,7 +724,7 @@ function OpenApiRequestTree({
                   type="button"
                   variant="ghost"
                   data-api-group={group.name}
-                  className="h-9 w-full justify-start gap-2 px-2 font-medium text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  className="h-9 w-full justify-start gap-2 rounded-none px-2 font-medium text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <ChevronRightIcon className="w-4 transition-transform" />
                   <FolderClosedIcon className="w-4 text-sidebar-foreground/60" />
@@ -882,7 +845,7 @@ function CustomRequestItem({
       >
         <span
           className={cn(
-            "w-10 shrink-0 text-[10px] font-semibold tabular-nums",
+            "w-10 shrink-0 font-mono text-[10px] font-medium tabular-nums",
             getTransportClassName(
               request.transport,
               request.mode,
@@ -1026,13 +989,13 @@ function OperationItem({
         data-operation-id={operation.id}
         onClick={() => onSelectOperation(operation)}
         className={cn(
-          "min-h-8 w-full justify-start gap-0.5 rounded-md py-1 pr-2 pl-2 font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "min-h-8 w-full justify-start gap-0.5 rounded-none py-1 pr-2 pl-2 font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
         )}
       >
         <span
           className={cn(
-            "w-10 shrink-0 text-left text-[10px] font-semibold tabular-nums",
+            "w-10 shrink-0 text-left font-mono text-[10px] font-medium tabular-nums",
             operation.requestMode === "sse"
               ? "text-violet-600 dark:text-violet-400"
               : getMethodClassName(operation.method)
@@ -1055,7 +1018,7 @@ function OperationItem({
     >
       <div
         className={cn(
-          "flex min-h-8 w-full items-center rounded-md py-1 pr-2 pl-0 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "flex min-h-8 w-full items-center rounded-none py-1 pr-2 pl-0 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           isActive &&
             !savedResponseIsActive &&
             "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -1081,7 +1044,7 @@ function OperationItem({
         >
           <span
             className={cn(
-              "w-10 shrink-0 text-left text-[10px] font-semibold tabular-nums",
+              "w-10 shrink-0 text-left font-mono text-[10px] font-medium tabular-nums",
               operation.requestMode === "sse"
                 ? "text-violet-600 dark:text-violet-400"
                 : getMethodClassName(operation.method)
@@ -1105,7 +1068,7 @@ function OperationItem({
               <div
                 key={savedResponse.id}
                 className={cn(
-                  "group/response flex min-h-8 items-center gap-1 rounded-md py-1 pr-1 pl-2 transition-colors",
+                  "group/response flex min-h-8 items-center gap-1 rounded-none py-1 pr-1 pl-2 transition-colors",
                   responseIsActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

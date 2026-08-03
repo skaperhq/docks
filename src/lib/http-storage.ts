@@ -44,6 +44,8 @@ export function createHttpStorageAdapter(url: string): StorageAdapter {
     deleteSavedResponse: ({ data }) => call("deleteSavedResponse", data),
     getSavedResponse: ({ data }) => call("getSavedResponse", data),
     createCollection: ({ data }) => call("createCollection", data),
+    createCollectionWithRequests: ({ data }) =>
+      call("createCollectionWithRequests", data),
     updateCollection: ({ data }) => call("updateCollection", data),
     deleteCollection: ({ data }) => call("deleteCollection", data),
     upsertCustomRequest: ({ data }) => call("upsertCustomRequest", data),

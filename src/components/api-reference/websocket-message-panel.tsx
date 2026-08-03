@@ -18,7 +18,7 @@ export function WebSocketMessagePanel({
   const canSend = connectionStatus === "connected" && message.length > 0
 
   return (
-    <section className="flex h-72 flex-col overflow-hidden rounded-sm border border-border bg-background">
+    <section className="flex h-72 flex-col overflow-hidden rounded-none border border-border bg-background">
       <div className="relative flex min-h-0 flex-1">
         {!message ? (
           <span className="pointer-events-none absolute top-3 left-14 z-10 font-mono text-sm text-muted-foreground/70">
@@ -49,6 +49,7 @@ export function WebSocketMessagePanel({
           onClick={onSend}
           disabled={!canSend}
           aria-label="Send WebSocket message"
+          className="rounded-none font-mono uppercase"
         >
           <SendIcon data-icon="inline-start" />
           Send

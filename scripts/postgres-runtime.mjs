@@ -26,6 +26,7 @@ const MUTATING_ACTIONS = new Set([
   "saveResponse",
   "deleteSavedResponse",
   "createCollection",
+  "createCollectionWithRequests",
   "updateCollection",
   "deleteCollection",
   "upsertCustomRequest",
@@ -43,7 +44,13 @@ const migrationDirectory = resolve(
   runtimeDirectory,
   basename(runtimeDirectory) === "scripts" ? "../migrations" : "migrations"
 )
-const migrations = [{ version: "0001_initial", file: "0001_initial.sql" }]
+const migrations = [
+  { version: "0001_initial", file: "0001_initial.sql" },
+  {
+    version: "0002_custom_request_folders",
+    file: "0002_custom_request_folders.sql",
+  },
+]
 
 export async function migrateSkaperPostgres({ client, dryRun = false } = {}) {
   assertQueryable(client, "migrateSkaperPostgres client")
@@ -135,7 +142,7 @@ export async function createSkaperPostgres(options = {}) {
     storageAdapter,
     async getCustomRequests() {
       const customRequests = await pool.query(
-        `SELECT id, collection_id, name, method, transport, mode, url,
+        `SELECT id, collection_id, name, method, transport, mode, url, folder,
                 draft, position, created_at, updated_at
            FROM skaper.custom_requests
           WHERE workspace_id = $1
@@ -378,7 +385,7 @@ export async function createPostgresStorageAdapter({
            COALESCE((
              SELECT jsonb_agg(to_jsonb(custom_row) ORDER BY custom_row.position, custom_row.id)
                FROM (
-                 SELECT id, collection_id, name, method, transport, mode, url,
+                 SELECT id, collection_id, name, method, transport, mode, url, folder,
                         draft, position, created_at, updated_at
                    FROM skaper.custom_requests
                   WHERE workspace_id = $1
@@ -539,6 +546,36 @@ export async function createPostgresStorageAdapter({
       return data
     },
 
+    async createCollectionWithRequests({ data }) {
+      await ensureWorkspaceReady()
+      return withClient(pool, async (connection) => {
+        await connection.query("BEGIN")
+        try {
+          await connection.query(
+            `INSERT INTO skaper.collections
+               (workspace_id, id, name, position, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              scope,
+              data.collection.id,
+              data.collection.name,
+              data.collection.position,
+              data.collection.createdAt,
+              data.collection.updatedAt,
+            ]
+          )
+          for (const request of data.requests) {
+            await upsertCustomRequestRow(connection, scope, request)
+          }
+          await connection.query("COMMIT")
+          return data
+        } catch (error) {
+          await connection.query("ROLLBACK").catch(() => {})
+          throw error
+        }
+      })
+    },
+
     async updateCollection({ data }) {
       const result = await pool.query(
         `UPDATE skaper.collections
@@ -561,36 +598,7 @@ export async function createPostgresStorageAdapter({
 
     async upsertCustomRequest({ data }) {
       await ensureWorkspaceReady()
-      await pool.query(
-        `INSERT INTO skaper.custom_requests
-           (workspace_id, id, collection_id, name, method, transport, mode, url,
-            draft, position, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
-         ON CONFLICT (workspace_id, id) DO UPDATE SET
-           collection_id = EXCLUDED.collection_id,
-           name = EXCLUDED.name,
-           method = EXCLUDED.method,
-           transport = EXCLUDED.transport,
-           mode = EXCLUDED.mode,
-           url = EXCLUDED.url,
-           draft = EXCLUDED.draft,
-           position = EXCLUDED.position,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          scope,
-          data.id,
-          data.collectionId,
-          data.name,
-          data.method,
-          data.transport,
-          data.mode,
-          data.url,
-          json(data.draft),
-          data.position,
-          data.createdAt,
-          data.updatedAt,
-        ]
-      )
+      await upsertCustomRequestRow(pool, scope, data)
       return data
     },
 
@@ -977,11 +985,47 @@ function mapCustomRequest(row) {
     transport: row.transport,
     mode: row.mode,
     url: row.url,
+    folder: row.folder ?? undefined,
     draft: parseJson(row.draft),
     position: row.position,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   }
+}
+
+async function upsertCustomRequestRow(connection, workspaceId, data) {
+  await connection.query(
+    `INSERT INTO skaper.custom_requests
+       (workspace_id, id, collection_id, name, method, transport, mode, url,
+        folder, draft, position, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13)
+     ON CONFLICT (workspace_id, id) DO UPDATE SET
+       collection_id = EXCLUDED.collection_id,
+       name = EXCLUDED.name,
+       method = EXCLUDED.method,
+       transport = EXCLUDED.transport,
+       mode = EXCLUDED.mode,
+       url = EXCLUDED.url,
+       folder = EXCLUDED.folder,
+       draft = EXCLUDED.draft,
+       position = EXCLUDED.position,
+       updated_at = EXCLUDED.updated_at`,
+    [
+      workspaceId,
+      data.id,
+      data.collectionId,
+      data.name,
+      data.method,
+      data.transport,
+      data.mode,
+      data.url,
+      data.folder ?? null,
+      json(data.draft),
+      data.position,
+      data.createdAt,
+      data.updatedAt,
+    ]
+  )
 }
 
 function normalizeRequestTab(value) {

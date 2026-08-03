@@ -50,6 +50,7 @@ export type SkaperStorageAdapter = {
   deleteSavedResponse: (input: { data: { id: string } }) => Promise<unknown>
   getSavedResponse: (input: { data: string }) => Promise<unknown>
   createCollection: (input: { data: unknown }) => Promise<unknown>
+  createCollectionWithRequests: (input: { data: unknown }) => Promise<unknown>
   updateCollection: (input: { data: unknown }) => Promise<unknown>
   deleteCollection: (input: { data: string }) => Promise<unknown>
   upsertCustomRequest: (input: { data: unknown }) => Promise<unknown>
@@ -64,6 +65,7 @@ export type SkaperCustomRequest = {
   transport: "http" | "websocket"
   mode: "standard" | "sse"
   url: string
+  folder?: string
   draft: Record<string, unknown>
   position: number
   createdAt: string

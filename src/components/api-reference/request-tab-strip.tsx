@@ -36,7 +36,7 @@ export function RequestTabStrip({
           <div
             key={apiOperation.id}
             className={cn(
-              "mx-0.5 flex h-[calc(100%-0.25rem)] max-w-40 min-w-32 shrink-0 items-center justify-between self-end rounded-t-md border border-b-0 border-border bg-card px-1.5 text-left text-sm text-muted-foreground hover:bg-accent/50",
+              "mx-0.5 flex h-[calc(100%-0.25rem)] max-w-40 min-w-32 shrink-0 items-center justify-between self-end rounded-none border border-b-0 border-border bg-card px-1.5 text-left text-sm text-muted-foreground hover:bg-accent/50",
               apiOperation.id === activeOperationId &&
                 "bg-background font-medium text-foreground"
             )}
@@ -50,7 +50,7 @@ export function RequestTabStrip({
             >
               <span
                 className={cn(
-                  "text-[11px] font-normal",
+                  "font-mono text-[11px] font-normal uppercase",
                   apiOperation.mode === "sse"
                     ? "text-violet-600 dark:text-violet-400"
                     : getMethodClassName(apiOperation.method)
@@ -76,7 +76,7 @@ export function RequestTabStrip({
                 onCloseOperation(apiOperation.id)
               }}
               aria-label={`Close ${apiOperation.displayPath} tab`}
-              className="size-5 rounded-sm hover:bg-accent hover:text-foreground"
+              className="size-5 rounded-none hover:bg-accent hover:text-foreground"
             >
               <X className="w-3 text-muted-foreground hover:text-foreground" />
             </Button>

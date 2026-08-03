@@ -1,5 +1,6 @@
 import type {
   ApiWorkspaceState,
+  PersistedCollectionImport,
   PersistedCollection,
   PersistedCustomRequest,
   PersistedSavedResponse,
@@ -59,6 +60,9 @@ export type StorageAdapter = {
   createCollection: (input: {
     data: PersistedCollection
   }) => Promise<PersistedCollection>
+  createCollectionWithRequests: (input: {
+    data: PersistedCollectionImport
+  }) => Promise<PersistedCollectionImport>
   updateCollection: (input: {
     data: PersistedCollection
   }) => Promise<PersistedCollection>

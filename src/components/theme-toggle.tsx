@@ -7,7 +7,7 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
 
   return (
-    <div className="flex w-full items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
+    <div className="flex w-full items-center gap-1 rounded-none border border-border bg-muted/50 p-1">
       <Button
         type="button"
         variant="ghost"
@@ -15,7 +15,7 @@ export function ThemeToggle() {
         onClick={() => setTheme("light")}
         aria-pressed={theme === "light"}
         className={cn(
-          "flex-1 px-3 text-xs",
+          "flex-1 rounded-none px-3 text-xs",
           theme === "light"
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground"
@@ -31,7 +31,7 @@ export function ThemeToggle() {
         onClick={() => setTheme("dark")}
         aria-pressed={theme === "dark"}
         className={cn(
-          "flex-1 px-3 text-xs",
+          "flex-1 rounded-none px-3 text-xs",
           theme === "dark"
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground"
@@ -47,7 +47,7 @@ export function ThemeToggle() {
         onClick={() => setTheme("system")}
         aria-pressed={theme === "system"}
         className={cn(
-          "flex-1 px-3 text-xs",
+          "flex-1 rounded-none px-3 text-xs",
           theme === "system"
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground"

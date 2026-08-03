@@ -14,7 +14,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -78,12 +80,14 @@ import {
   restoreGeneratedHeaderTemplates,
 } from "@/components/api-reference/utils"
 import type {
+  PersistedCollection,
   PersistedCustomRequest,
   RequestMethod,
   RequestMode,
   RequestTransport,
 } from "@/lib/api-reference-actions"
 import {
+  createCollectionWithRequests,
   createCustomRequest,
   deleteCustomRequest,
   deleteRequestTab,
@@ -95,6 +99,10 @@ import {
   upsertCustomRequest,
   upsertRequestTab,
 } from "@/lib/api-reference-actions"
+import type {
+  CreateRequestInput,
+  ImportOpenApiInput,
+} from "@/components/request-import-dialog"
 import { buildFetchRequest } from "@/lib/api-request"
 import {
   buildApiOverviewMarkdown,
@@ -197,6 +205,9 @@ export function WorkspacePage({
   const [customRequests, setCustomRequests] = React.useState<
     PersistedCustomRequest[]
   >([])
+  const [collections, setCollections] = React.useState<PersistedCollection[]>(
+    []
+  )
   const [savedResponses, setSavedResponses] = React.useState<
     SavedResponseSummary[]
   >([])
@@ -511,6 +522,7 @@ export function WorkspacePage({
           )
         )
         setSavedResponses(workspace.savedResponses)
+        setCollections(workspace.collections)
         persistedCustomRequestsRef.current = new Map(
           workspace.customRequests.map((request) => [
             request.id,
@@ -681,14 +693,8 @@ export function WorkspacePage({
     onOperationChange(undefined)
   }
 
-  async function handleCreateCustomRequest(input: {
-    name: string
-    method: RequestMethod
-    transport: RequestTransport
-    mode: RequestMode
-    url: string
-  }) {
-    const draft = createEmptyRequestDraft()
+  async function handleCreateCustomRequest(input: CreateRequestInput) {
+    const draft = input.draft ?? createEmptyRequestDraft()
 
     try {
       const request = await createCustomRequest({
@@ -714,6 +720,42 @@ export function WorkspacePage({
       return request
     } catch (error) {
       console.error("Failed to create custom request:", error)
+      return null
+    }
+  }
+
+  async function handleImportOpenApi(input: ImportOpenApiInput) {
+    try {
+      const imported = await createCollectionWithRequests({
+        data: {
+          name: input.name,
+          position: collections.length,
+          requests: input.requests.map((request, position) => ({
+            ...request,
+            position,
+          })),
+        },
+      })
+      setCollections((items) => [...items, imported.collection])
+      for (const request of imported.requests) {
+        persistedCustomRequestsRef.current.set(
+          request.id,
+          customRequestFingerprint(request)
+        )
+      }
+      setCustomRequests((requests) => [...requests, ...imported.requests])
+      setRequestDrafts((drafts) => ({
+        ...drafts,
+        ...Object.fromEntries(
+          imported.requests.map((request) => [
+            getCustomRequestKey(request.id),
+            request.draft,
+          ])
+        ),
+      }))
+      return imported.requests
+    } catch (error) {
+      console.error("Failed to import OpenAPI collection:", error)
       return null
     }
   }
@@ -1245,6 +1287,7 @@ export function WorkspacePage({
         selectedOperationId={selectedOperation?.id ?? null}
         selectedRequestId={selectedRequest?.id ?? null}
         savedResponses={savedResponses}
+        collections={collections}
         customRequests={customRequests}
         selectedSavedResponseId={selectedSavedResponseId}
         loadingSavedResponseId={loadingSavedResponseId}
@@ -1257,6 +1300,7 @@ export function WorkspacePage({
         onDeleteSavedResponse={handleDeleteSavedResponse}
         onDeleteCustomRequest={handleDeleteCustomRequest}
         onCreateCustomRequest={handleCreateCustomRequest}
+        onImportOpenApi={handleImportOpenApi}
         onSelectCustomRequest={handleSelectCustomRequest}
       />
       <SidebarInset className="h-svh min-w-0 overflow-hidden bg-background text-foreground">
@@ -1399,11 +1443,13 @@ function RequestWorkspace({
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1 text-[13px] text-muted-foreground">
-          <span className="truncate">{apiInfo.title}</span>
-          <span>/</span>
-          <span className="truncate">{request.tag}</span>
-          <span>/</span>
-          <span className="truncate font-normal text-foreground">
+          <span className="truncate border border-border px-1 font-mono uppercase">
+            {apiInfo.title}
+          </span>
+          <span className="truncate border border-border px-1 font-mono uppercase">
+            {request.tag}
+          </span>
+          <span className="truncate border border-border px-1">
             {request.displayPath}
           </span>
           {request.operation?.hasAuth ? (
@@ -1413,8 +1459,8 @@ function RequestWorkspace({
         <CopyPageAction markdown={pageMarkdown} title={request.summary} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12.5rem] sm:gap-1">
-        <div className="flex h-10 min-w-0 overflow-hidden rounded-md border">
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7.5rem] sm:gap-1">
+        <div className="flex h-9 min-w-0 overflow-hidden rounded-none border">
           {request.customRequest ? (
             <CustomRequestAddressBar
               request={request.customRequest}
@@ -1425,7 +1471,7 @@ function RequestWorkspace({
               <div className="flex p-1">
                 <div
                   className={cn(
-                    "flex shrink-0 items-center justify-between rounded-sm px-4 text-left text-[13px] font-semibold",
+                    "flex shrink-0 items-center justify-between rounded-none px-4 text-left font-mono text-[13px] font-semibold",
                     request.mode === "sse"
                       ? "bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400"
                       : [
@@ -1447,7 +1493,7 @@ function RequestWorkspace({
         <div className="grid grid-cols-1 gap-3">
           <Button
             type="button"
-            className="h-10 rounded-sm bg-primary text-sm font-normal"
+            className="h-9 rounded-none border border-primary bg-primary font-mono text-sm font-normal uppercase"
             onClick={isWebSocketConnected ? onDisconnectWebSocket : onSend}
             disabled={isWebSocketConnecting || isRequestLoading}
             aria-label={
@@ -1490,9 +1536,13 @@ function RequestWorkspace({
         onValueChange={(value) => onRequestTabChange(value as RequestTab)}
         className="mt-4 flex w-full flex-col"
       >
-        <TabsList className="max-w-full justify-start overflow-x-auto rounded-md border border-border bg-muted/50 p-1">
+        <TabsList className="max-w-full justify-start overflow-x-auto rounded-none border border-border bg-muted/50 p-1">
           {visibleRequestTabs.map((tab) => (
-            <TabsTrigger key={tab} value={tab} className="shrink-0 rounded-sm">
+            <TabsTrigger
+              key={tab}
+              value={tab}
+              className="shrink-0 rounded-none"
+            >
               <RequestTabLabel
                 tab={tab}
                 operation={request.operation}
@@ -1558,13 +1608,16 @@ function CustomRequestAddressBar({
       >
         <SelectTrigger
           aria-label="Request transport"
-          className="h-full w-22 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="h-full w-22 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 font-mono text-xs font-medium text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="http">HTTP</SelectItem>
-          <SelectItem value="websocket">WS</SelectItem>
+          <SelectGroup>
+            <SelectLabel>Transport</SelectLabel>
+            <SelectItem value="http">HTTP</SelectItem>
+            <SelectItem value="websocket">WS</SelectItem>
+          </SelectGroup>
         </SelectContent>
       </Select>
       <Select
@@ -1578,13 +1631,16 @@ function CustomRequestAddressBar({
       >
         <SelectTrigger
           aria-label="HTTP mode"
-          className="h-full w-28 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="h-full w-28 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 font-mono text-xs font-medium text-muted-foreground uppercase shadow-none focus-visible:ring-0 dark:bg-transparent"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="standard">Standard</SelectItem>
-          <SelectItem value="sse">SSE</SelectItem>
+          <SelectGroup>
+            <SelectLabel>HTTP Mode</SelectLabel>
+            <SelectItem value="standard">Standard</SelectItem>
+            <SelectItem value="sse">SSE</SelectItem>
+          </SelectGroup>
         </SelectContent>
       </Select>
       <Select
@@ -1599,20 +1655,23 @@ function CustomRequestAddressBar({
         <SelectTrigger
           aria-label="HTTP method"
           className={cn(
-            "h-full w-22 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 text-xs font-normal shadow-none focus-visible:ring-0 dark:bg-transparent",
+            "h-full w-22 shrink-0 rounded-none border-0 border-r border-border bg-transparent px-3 font-mono text-xs font-medium uppercase shadow-none focus-visible:ring-0 dark:bg-transparent",
             getMethodClassName(request.method)
           )}
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map(
-            (method) => (
-              <SelectItem key={method} value={method}>
-                {method}
-              </SelectItem>
-            )
-          )}
+          <SelectGroup>
+            <SelectLabel>HTTP Method</SelectLabel>
+            {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map(
+              (method) => (
+                <SelectItem key={method} value={method}>
+                  {method}
+                </SelectItem>
+              )
+            )}
+          </SelectGroup>
         </SelectContent>
       </Select>
       <Input
@@ -1649,14 +1708,24 @@ function ApiOverview({
         <div className="flex flex-col items-start justify-between gap-6 lg:flex-row">
           <div className="flex max-w-3xl flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">v{apiInfo.version}</Badge>
-              <Badge variant="outline">OpenAPI {apiSpecVersion}</Badge>
+              <Badge
+                variant="secondary"
+                className="rounded-none border-[0.5px] border-foreground bg-black font-mono font-medium text-white"
+              >
+                V{apiInfo.version}
+              </Badge>
+              <Badge
+                variant="outline"
+                className="rounded-none border border-foreground bg-white font-mono font-medium text-black"
+              >
+                OPENAPI {apiSpecVersion}
+              </Badge>
             </div>
-            <h1 className="text-3xl font-medium tracking-tight text-foreground">
+            <h1 className="font-mono text-3xl font-medium tracking-tight text-foreground uppercase">
               {apiInfo.title}
             </h1>
             {apiInfo.description ? (
-              <p className="max-w-2xl text-[15px] leading-6 text-muted-foreground">
+              <p className="text-sm leading-6 text-muted-foreground">
                 {apiInfo.description}
               </p>
             ) : null}
@@ -1666,6 +1735,7 @@ function ApiOverview({
               type="button"
               variant="outline"
               onClick={onSelectEnvironment}
+              className="rounded-none font-mono uppercase"
             >
               <Settings2Icon data-icon="inline-start" />
               Environment
@@ -1681,7 +1751,7 @@ function ApiOverview({
         <div className="flex min-w-0 flex-col gap-8">
           <section className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-medium text-foreground">
+              <h2 className="font-mono text-lg font-medium text-foreground uppercase">
                 API surface
               </h2>
               <p className="text-sm text-muted-foreground">
@@ -1710,24 +1780,21 @@ function ApiOverview({
       <section className="flex flex-col gap-5 py-8">
         <div className="flex items-end justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <h2 className="text-base font-medium text-foreground">
+            <h2 className="font-mono text-base font-medium text-foreground uppercase">
               Saved responses
             </h2>
             <p className="text-sm text-muted-foreground">
               Responses saved from previous requests.
             </p>
           </div>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {savedResponses.length}
-          </span>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-hidden rounded-none border border-border">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-20">Response</TableHead>
-                <TableHead>Endpoint</TableHead>
+                <TableHead className="w-50">Endpoint</TableHead>
                 <TableHead className="w-20">Method</TableHead>
                 <TableHead className="w-20">Status</TableHead>
                 <TableHead className="w-24">Duration</TableHead>
@@ -1751,18 +1818,21 @@ function ApiOverview({
                       </p>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(getMethodClassName(response.method))}
+                      <p
+                        className={cn(
+                          getMethodClassName(response.method),
+                          getBgMethodClassName(response.method),
+                          "w-fit rounded-none px-2 py-0.5 text-center text-xs font-semibold uppercase"
+                        )}
                       >
                         {response.method}
-                      </Badge>
+                      </p>
                     </TableCell>
 
                     <TableCell>
                       <span
                         className={cn(
-                          "text-xs font-normal tabular-nums",
+                          "font-mono text-xs font-normal tabular-nums",
                           response.ok ? "text-foreground" : "text-destructive"
                         )}
                       >
@@ -1852,13 +1922,15 @@ function OverviewStat({
   icon: LucideIcon
 }) {
   return (
-    <Card size="sm" className="rounded-md">
+    <Card size="sm" className="rounded-none bg-background">
       <CardHeader>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
-        <CardDescription>{label}</CardDescription>
+        <CardDescription className="font-mono uppercase">
+          {label}
+        </CardDescription>
+        <CardTitle className="tabular-nums">{value}</CardTitle>
         <CardAction>
           <Icon
-            className="text-muted-foreground"
+            className="text-foreground"
             aria-hidden="true"
             strokeWidth={1.2}
           />
