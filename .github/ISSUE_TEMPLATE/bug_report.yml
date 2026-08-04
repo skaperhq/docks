@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible problem in Docks
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not report security vulnerabilities here. Follow SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Docks version
+      placeholder: 0.4.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Runtime
+      description: Node.js version, framework, operating system, and browser if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide code or a repository that demonstrates the problem without secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

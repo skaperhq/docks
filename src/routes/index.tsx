@@ -115,7 +115,7 @@ import {
   createRelayWebSocket,
   getRelayedResponseCookies,
   getRelayedResponseUrl,
-  skaperFetch,
+  docksFetch,
 } from "@/lib/relay"
 import {
   createOperationRequestBodyDraft,
@@ -1243,7 +1243,7 @@ export function WorkspacePage({
         ...snapshots,
         [selectedRequest.id]: request.requestSnapshot,
       }))
-      const response = await skaperFetch(request.url, {
+      const response = await docksFetch(request.url, {
         method: selectedRequest.method,
         headers: request.headers,
         body: request.body,
@@ -1252,7 +1252,7 @@ export function WorkspacePage({
       const bodyText = new TextDecoder().decode(buffer)
       const headers = Array.from(response.headers.entries())
         .map(([key, value]) => ({ key, value }))
-        .filter((header) => !header.key.startsWith("x-skaper-relay-"))
+        .filter((header) => !header.key.startsWith("x-docks-relay-"))
       const relayedCookies = getRelayedResponseCookies(response)
       const durationMs = Math.round(performance.now() - startedAt)
 
@@ -2467,7 +2467,7 @@ function connectSseRequest({
 
       const responseHeaders = Array.from(response.headers.entries())
         .map(([key, value]) => ({ key, value }))
-        .filter((header) => !header.key.startsWith("x-skaper-relay-"))
+        .filter((header) => !header.key.startsWith("x-docks-relay-"))
       const relayedCookies = getRelayedResponseCookies(response)
       responseMetadata = {
         status: response.status,

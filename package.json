@@ -1,8 +1,20 @@
 {
   "name": "@skaper/docks",
   "version": "0.4.0",
+  "workspaces": [
+    "apps/docs"
+  ],
   "description": "A self-contained OpenAPI workspace and MCP server for developers and AI agents.",
   "license": "MIT",
+  "author": "skaper contributors",
+  "homepage": "https://github.com/kalidasrajeev1997/docks#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalidasrajeev1997/docks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kalidasrajeev1997/docks/issues"
+  },
   "keywords": [
     "openapi",
     "api-documentation",
@@ -39,16 +51,17 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "skaper": "dist/package/cli.js"
+    "docks": "dist/package/cli.js"
   },
   "files": [
     "dist/package",
     "types",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -65,17 +78,21 @@
     "build:app": "vite build",
     "build:ui": "vite build --config vite.lib.config.ts",
     "build:package": "npm run build:ui && node scripts/build-package.mjs",
-    "prepack": "npm run build:package",
+    "prepack": "npm run notices:check && npm run build:package",
     "package": "npm pack --cache /tmp/skaper-ui-npm-cache",
     "test:package": "npm run build:package && node scripts/test-package.mjs",
     "test:mcp": "npm run build:package && node scripts/test-mcp.mjs",
     "test:postgres": "npm run build:package && node scripts/test-postgres.mjs",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:integration": "node scripts/test-package.mjs && node scripts/test-mcp.mjs && node scripts/test-postgres.mjs",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\"",
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "notices": "node scripts/generate-third-party-notices.mjs",
+    "notices:check": "node scripts/generate-third-party-notices.mjs --check",
+    "verify": "npm run check && npm run lint && npm run typecheck && npm test && npm run build && npm run notices:check && npm run test:integration"
   },
   "devDependencies": {
     "@codemirror/lang-json": "^6.0.2",
@@ -85,14 +102,14 @@
     "@fontsource/dm-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.3",
     "@tailwindcss/vite": "^4",
-    "@tanstack/devtools-vite": "latest",
-    "@tanstack/eslint-config": "latest",
-    "@tanstack/react-devtools": "latest",
-    "@tanstack/react-router": "latest",
-    "@tanstack/react-router-devtools": "latest",
-    "@tanstack/react-router-ssr-query": "latest",
-    "@tanstack/react-start": "latest",
-    "@tanstack/router-plugin": "latest",
+    "@tanstack/devtools-vite": "^0.8.1",
+    "@tanstack/eslint-config": "^0.4.0",
+    "@tanstack/react-devtools": "^0.10.8",
+    "@tanstack/react-router": "^1.170.16",
+    "@tanstack/react-router-devtools": "^1.167.0",
+    "@tanstack/react-router-ssr-query": "^1.167.1",
+    "@tanstack/react-start": "^1.168.26",
+    "@tanstack/router-plugin": "^1.168.18",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22",

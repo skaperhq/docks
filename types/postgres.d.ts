@@ -13,7 +13,7 @@ export type PostgresQueryable = {
   connect?: () => Promise<PostgresQueryable & { release?: () => void }>
 }
 
-export type SkaperPostgresOptions = {
+export type DocksPostgresOptions = {
   pool: PostgresQueryable
   workspaceId: string
   path?: string
@@ -23,19 +23,19 @@ export type SkaperPostgresOptions = {
   origin?: string
 }
 
-export type SkaperPostgres = {
+export type DocksPostgres = {
   readonly path: string
   readonly workspaceId: string
-  readonly storageAdapter: SkaperStorageAdapter
+  readonly storageAdapter: DocksStorageAdapter
   readonly handler: {
     (request: Request): Promise<Response>
     (context: { req: { raw: Request } }): Promise<Response>
     (request: IncomingMessage, response: ServerResponse): Promise<void>
   }
-  getCustomRequests: () => Promise<SkaperCustomRequest[]>
+  getCustomRequests: () => Promise<DocksCustomRequest[]>
 }
 
-export type SkaperStorageAdapter = {
+export type DocksStorageAdapter = {
   getEnvironments: () => Promise<unknown[]>
   saveEnvironment: (input: { data: unknown }) => Promise<unknown>
   deleteEnvironment: (input: { data: string }) => Promise<unknown>
@@ -57,7 +57,7 @@ export type SkaperStorageAdapter = {
   deleteCustomRequest: (input: { data: string }) => Promise<unknown>
 }
 
-export type SkaperCustomRequest = {
+export type DocksCustomRequest = {
   id: string
   collectionId: string
   name: string
@@ -72,16 +72,16 @@ export type SkaperCustomRequest = {
   updatedAt: string
 }
 
-export declare function createSkaperPostgres(
-  options: SkaperPostgresOptions
-): Promise<SkaperPostgres>
+export declare function createDocksPostgres(
+  options: DocksPostgresOptions
+): Promise<DocksPostgres>
 
 export declare function createPostgresStorageAdapter(options: {
   pool: PostgresQueryable
   workspaceId: string
-}): Promise<SkaperStorageAdapter>
+}): Promise<DocksStorageAdapter>
 
-export declare function migrateSkaperPostgres(options: {
+export declare function migrateDocksPostgres(options: {
   client: PostgresQueryable
   dryRun?: boolean
 }): Promise<{ applied: string[]; pending: string[]; sql?: string }>

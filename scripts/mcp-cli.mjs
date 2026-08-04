@@ -3,8 +3,8 @@
 import { createServer } from "node:http"
 import { spawn } from "node:child_process"
 import process from "node:process"
-import { createSkaperMcp } from "./mcp-runtime.mjs"
-import { migrateSkaperPostgres } from "./postgres-runtime.mjs"
+import { createDocksMcp } from "./mcp-runtime.mjs"
+import { migrateDocksPostgres } from "./postgres-runtime.mjs"
 
 const [command, ...args] = process.argv.slice(2)
 
@@ -33,9 +33,9 @@ if (command !== "mcp") {
 
 const parsed = parseArguments(args)
 const source = parsed.positionals[0]
-if (!source) fail("skaper mcp requires an OpenAPI URL or file path.")
+if (!source) fail("docks mcp requires an OpenAPI URL or file path.")
 if (parsed.positionals.length > 1)
-  fail("skaper mcp accepts exactly one OpenAPI source.")
+  fail("docks mcp accepts exactly one OpenAPI source.")
 
 const transport = parsed.values.transport ?? "stdio"
 if (transport !== "stdio" && transport !== "http") {
@@ -85,7 +85,7 @@ const allowedHosts = buildAllowedHosts(host, port)
 
 let mcp
 try {
-  mcp = await createSkaperMcp({
+  mcp = await createDocksMcp({
     openapi: source,
     ...(parsed.values["base-url"]
       ? { baseUrl: parsed.values["base-url"] }
@@ -140,7 +140,7 @@ if (transport === "stdio") {
   })
   server.listen(port, host, () => {
     process.stderr.write(
-      `Skaper MCP listening on http://${host}:${port}${path}\n`
+      `Docks MCP listening on http://${host}:${port}${path}\n`
     )
   })
   const shutdown = async () => {
@@ -245,7 +245,7 @@ async function runDatabaseCommand(values) {
   }
   const [subcommand, ...options] = values
   if (subcommand !== "migrate") {
-    fail("Usage: skaper db migrate [options]")
+    fail("Usage: docks db migrate [options]")
   }
   let environmentName = "DATABASE_URL"
   let dryRun = false
@@ -266,7 +266,7 @@ async function runDatabaseCommand(values) {
   }
 
   if (dryRun) {
-    const result = await migrateSkaperPostgres({
+    const result = await migrateDocksPostgres({
       client: { query() {} },
       dryRun: true,
     })
@@ -281,11 +281,11 @@ async function runDatabaseCommand(values) {
   const pg = await import("pg")
   const pool = new pg.Pool({ connectionString })
   try {
-    const result = await migrateSkaperPostgres({ client: pool })
+    const result = await migrateDocksPostgres({ client: pool })
     process.stdout.write(
       result.applied.length
-        ? `Applied Skaper migrations: ${result.applied.join(", ")}\n`
-        : "Skaper database is already up to date.\n"
+        ? `Applied Docks migrations: ${result.applied.join(", ")}\n`
+        : "Docks database is already up to date.\n"
     )
   } finally {
     await pool.end()
@@ -331,7 +331,7 @@ async function addToClient(values) {
   }
 
   const positionals = []
-  let name = "skaper-api"
+  let name = "docks-api"
   let dryRun = false
 
   for (let index = 0; index < values.length; index += 1) {
@@ -353,7 +353,7 @@ async function addToClient(values) {
 
   const [client, endpoint] = positionals
   if (!client || !endpoint || positionals.length !== 2) {
-    fail("Usage: skaper add vscode <mcp-url> [--name <name>]")
+    fail("Usage: docks add vscode <mcp-url> [--name <name>]")
   }
   if (client.toLowerCase() !== "vscode") {
     fail(`Unsupported client: ${client}. Currently supported: vscode.`)
@@ -413,8 +413,8 @@ function parseMcpUrl(value) {
 }
 
 function vscodeCommandCandidates() {
-  if (process.env.SKAPER_VSCODE_COMMAND) {
-    return [process.env.SKAPER_VSCODE_COMMAND]
+  if (process.env.DOCKS_VSCODE_COMMAND) {
+    return [process.env.DOCKS_VSCODE_COMMAND]
   }
   return process.platform === "darwin"
     ? [
@@ -440,29 +440,31 @@ function runCommand(commandName, commandArgs) {
 
 function printHelp() {
   process.stdout.write(
-    `Skaper\n\nUsage:\n  skaper add vscode <mcp-url> [options]\n  skaper mcp <openapi-url-or-file> [options]\n  skaper db migrate [options]\n\nRun a command with --help for its options.\n`
+    `Docks
+
+Usage:\n  docks add vscode <mcp-url> [options]\n  docks mcp <openapi-url-or-file> [options]\n  docks db migrate [options]\n\nRun a command with --help for its options.\n`
   )
 }
 
 function printAddHelp() {
   process.stdout.write(
-    `Add a hosted Skaper MCP server to an agent client.\n\nUsage:\n  skaper add vscode <mcp-url> [options]\n\nOptions:\n  --name <name>  MCP server name (default: skaper-api)\n  --dry-run      Print the VS Code definition without installing it\n`
+    `Add a hosted Docks MCP server to an agent client.\n\nUsage:\n  docks add vscode <mcp-url> [options]\n\nOptions:\n  --name <name>  MCP server name (default: docks-api)\n  --dry-run      Print the VS Code definition without installing it\n`
   )
 }
 
 function printMcpHelp() {
   process.stdout.write(
-    `Skaper MCP\n\nUsage:\n  skaper mcp <openapi-url-or-file> [options]\n\nOptions:\n  --transport <stdio|http>       Transport (default: stdio)\n  --host <host>                  HTTP host (default: 127.0.0.1)\n  --port <port>                  HTTP port (default: 3210)\n  --path <path>                  MCP route (default: /mcp)\n  --base-url <url>               Override the OpenAPI server URL\n  --mcp-token-env <name>         Read the MCP bearer token from an environment variable\n  --forward-header <from=to>     Allow and optionally rename a client header\n  --api-header-env <name=env>    Read an upstream API header from an environment variable\n  --spec-header-env <name=env>   Read an OpenAPI-fetch header from an environment variable\n  --allow-method <method>        Allow an HTTP method (repeatable)\n  --allow-operation <id>         Allow an operationId or canonical key (repeatable)\n  --allow-origin <origin>        Allow an exact custom API origin (repeatable)\n  --timeout <milliseconds>       Upstream timeout (default: 30000)\n  --max-response-bytes <bytes>   Response limit (default: 1048576)\n  --allow-unauthenticated        Permit a non-loopback HTTP server without a token\n`
+    `Docks MCP\n\nUsage:\n  docks mcp <openapi-url-or-file> [options]\n\nOptions:\n  --transport <stdio|http>       Transport (default: stdio)\n  --host <host>                  HTTP host (default: 127.0.0.1)\n  --port <port>                  HTTP port (default: 3210)\n  --path <path>                  MCP route (default: /mcp)\n  --base-url <url>               Override the OpenAPI server URL\n  --mcp-token-env <name>         Read the MCP bearer token from an environment variable\n  --forward-header <from=to>     Allow and optionally rename a client header\n  --api-header-env <name=env>    Read an upstream API header from an environment variable\n  --spec-header-env <name=env>   Read an OpenAPI-fetch header from an environment variable\n  --allow-method <method>        Allow an HTTP method (repeatable)\n  --allow-operation <id>         Allow an operationId or canonical key (repeatable)\n  --allow-origin <origin>        Allow an exact custom API origin (repeatable)\n  --timeout <milliseconds>       Upstream timeout (default: 30000)\n  --max-response-bytes <bytes>   Response limit (default: 1048576)\n  --allow-unauthenticated        Permit a non-loopback HTTP server without a token\n`
   )
 }
 
 function printDatabaseHelp() {
   process.stdout.write(
-    `Skaper PostgreSQL migrations\n\nUsage:\n  skaper db migrate [options]\n\nOptions:\n  --database-url-env <name>  Connection-string environment variable (default: DATABASE_URL)\n  --dry-run                  Print the qualified Skaper SQL without connecting\n`
+    `Docks PostgreSQL migrations\n\nUsage:\n  docks db migrate [options]\n\nOptions:\n  --database-url-env <name>  Connection-string environment variable (default: DATABASE_URL)\n  --dry-run                  Print the qualified Skaper SQL without connecting\n`
   )
 }
 
 function fail(message) {
-  process.stderr.write(`skaper: ${message}\n`)
+  process.stderr.write(`docks: ${message}\n`)
   process.exit(1)
 }

@@ -500,7 +500,7 @@ function expandServerUrl(server: JsonObject | undefined, warnings: string[]) {
     const fallback = stringValue(variable?.default)
     if (fallback) return fallback
     warnings.push(
-      `Server variable ${name} has no default and was preserved as a Skaper variable.`
+      `Server variable ${name} has no default and was preserved as a Docks variable.`
     )
     return `{{${name}}}`
   })

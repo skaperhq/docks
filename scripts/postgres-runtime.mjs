@@ -52,8 +52,8 @@ const migrations = [
   },
 ]
 
-export async function migrateSkaperPostgres({ client, dryRun = false } = {}) {
-  assertQueryable(client, "migrateSkaperPostgres client")
+export async function migrateDocksPostgres({ client, dryRun = false } = {}) {
+  assertQueryable(client, "migrateDocksPostgres client")
   const loaded = await Promise.all(
     migrations.map(async (migration) => {
       const sql = await readFile(
@@ -113,11 +113,11 @@ export async function migrateSkaperPostgres({ client, dryRun = false } = {}) {
   })
 }
 
-export async function createSkaperPostgres(options = {}) {
+export async function createDocksPostgres(options = {}) {
   const { pool } = options
-  assertQueryable(pool, "createSkaperPostgres pool")
+  assertQueryable(pool, "createDocksPostgres pool")
   const workspaceId = normalizeNonEmpty(options.workspaceId, "workspaceId")
-  const path = normalizePath(options.path ?? "/_skaper/storage")
+  const path = normalizePath(options.path ?? "/_docks/storage")
   const password = normalizeNonEmpty(options.password, "password")
   const sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
   const origin = options.origin
@@ -136,7 +136,7 @@ export async function createSkaperPostgres(options = {}) {
   })
 
   const result = {
-    __skaperPostgres: true,
+    __docksPostgres: true,
     path,
     workspaceId,
     storageAdapter,
@@ -900,7 +900,7 @@ function hashTokenKey(token) {
 }
 
 function sessionCookieName(path) {
-  return `skaper_session_${createHash("sha256").update(path).digest("hex").slice(0, 12)}`
+  return `docks_session_${createHash("sha256").update(path).digest("hex").slice(0, 12)}`
 }
 
 function createSessionCookie(path, token, expiresAt, secure) {

@@ -7,9 +7,9 @@ import { WebSocket as NodeWebSocket, WebSocketServer } from "ws"
 const UI_SCRIPT = null
 const UI_STYLES = null
 
-const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
+const DOCKS_LOGIN_TEMPLATE = /* HTML */ `
   <style>
-    .skaper-login-container {
+    .docks-login-container {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -34,18 +34,18 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
         sans-serif;
     }
 
-    .skaper-login-card {
+    .docks-login-card {
       box-sizing: border-box;
       width: 100%;
       max-width: 400px;
       padding: 2.5rem 2rem;
       border: 1px solid var(--border);
       border-radius: 1rem;
-      animation: skaperLoginFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: docksLoginFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
       background-color: var(--card);
     }
 
-    @keyframes skaperLoginFadeIn {
+    @keyframes docksLoginFadeIn {
       from {
         opacity: 0;
         transform: translateY(16px);
@@ -57,7 +57,7 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       }
     }
 
-    .skaper-login-header {
+    .docks-login-header {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -65,7 +65,7 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       text-align: center;
     }
 
-    .skaper-login-icon {
+    .docks-login-icon {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -82,25 +82,25 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       color: var(--primary);
     }
 
-    .skaper-login-title {
+    .docks-login-title {
       margin: 0 0 0.5rem;
       font-size: 1.25rem;
       font-weight: 500;
       letter-spacing: -0.025em;
     }
 
-    .skaper-login-subtitle {
+    .docks-login-subtitle {
       margin: 0;
       color: var(--muted-foreground);
       font-size: 0.875rem;
       line-height: 1.25rem;
     }
 
-    .skaper-form-group {
+    .docks-form-group {
       margin-bottom: 1.25rem;
     }
 
-    .skaper-form-input {
+    .docks-form-input {
       box-sizing: border-box;
       width: 100%;
       padding: 0.75rem 1rem;
@@ -113,12 +113,12 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       font-size: 0.875rem;
     }
 
-    .skaper-form-input:focus {
+    .docks-form-input:focus {
       border-color: var(--primary);
       box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
     }
 
-    .skaper-submit-btn {
+    .docks-submit-btn {
       box-sizing: border-box;
       width: 100%;
       padding: 0.75rem;
@@ -135,28 +135,28 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
         0 2px 4px -1px rgba(124, 58, 237, 0.06);
     }
 
-    .skaper-submit-btn:hover {
+    .docks-submit-btn:hover {
       opacity: 0.95;
       box-shadow:
         0 10px 15px -3px rgba(124, 58, 237, 0.15),
         0 4px 6px -2px rgba(124, 58, 237, 0.05);
     }
 
-    .skaper-submit-btn:active {
+    .docks-submit-btn:active {
       transform: scale(0.98);
     }
 
-    .skaper-submit-btn:disabled {
+    .docks-submit-btn:disabled {
       cursor: wait;
       opacity: 0.7;
     }
 
-    .skaper-submit-btn[data-loading="true"]::before {
+    .docks-submit-btn[data-loading="true"]::before {
       display: inline-block;
       width: 0.8rem;
       height: 0.8rem;
       margin-right: 0.5rem;
-      animation: skaperLoginSpin 0.7s linear infinite;
+      animation: docksLoginSpin 0.7s linear infinite;
       border: 2px solid rgba(255, 255, 255, 0.45);
       border-top-color: #ffffff;
       border-radius: 50%;
@@ -164,13 +164,13 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       content: "";
     }
 
-    @keyframes skaperLoginSpin {
+    @keyframes docksLoginSpin {
       to {
         transform: rotate(360deg);
       }
     }
 
-    .skaper-error-message {
+    .docks-error-message {
       display: none;
       margin-top: 0.75rem;
       color: var(--destructive);
@@ -178,11 +178,11 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
       text-align: center;
     }
 
-    .skaper-shake {
-      animation: skaperLoginShake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    .docks-shake {
+      animation: docksLoginShake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
     }
 
-    @keyframes skaperLoginShake {
+    @keyframes docksLoginShake {
       10%,
       90% {
         transform: translate3d(-1px, 0, 0);
@@ -206,10 +206,10 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
     }
   </style>
 
-  <div class="skaper-login-container">
-    <div class="skaper-login-card">
-      <div class="skaper-login-header">
-        <div class="skaper-login-icon">
+  <div class="docks-login-container">
+    <div class="docks-login-card">
+      <div class="docks-login-header">
+        <div class="docks-login-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 810 810">
             <rect width="810" height="810" rx="180" fill="#2447d8" />
             <g transform="translate(90 90) scale(.7777778)">
@@ -222,27 +222,27 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
             </g>
           </svg>
         </div>
-        <h1 class="skaper-login-title">Skaper</h1>
-        <p class="skaper-login-subtitle">
+        <h1 class="docks-login-title">Docks</h1>
+        <p class="docks-login-subtitle">
           Please enter the password to access the API Workspace.
         </p>
       </div>
 
-      <form id="skaper-login-form" onsubmit="return false;">
-        <div class="skaper-form-group">
+      <form id="docks-login-form" onsubmit="return false;">
+        <div class="docks-form-group">
           <input
             type="password"
-            id="skaper-password-input"
-            class="skaper-form-input"
+            id="docks-password-input"
+            class="docks-form-input"
             placeholder="Enter password"
             autofocus
             required
           />
         </div>
-        <button id="skaper-submit-btn" type="submit" class="skaper-submit-btn">
+        <button id="docks-submit-btn" type="submit" class="docks-submit-btn">
           Unlock Workspace
         </button>
-        <div id="skaper-error-message" class="skaper-error-message">
+        <div id="docks-error-message" class="docks-error-message">
           Incorrect password. Please try again.
         </div>
       </form>
@@ -250,9 +250,9 @@ const SKAPER_LOGIN_TEMPLATE = /* HTML */ `
   </div>
 `
 
-const RELAY_REQUEST_HEADER = "x-skaper-relay-request"
-const RELAY_RESPONSE_HEADER = "x-skaper-relay-response"
-const RELAY_TOKEN_HEADER = "x-skaper-relay-token"
+const RELAY_REQUEST_HEADER = "x-docks-relay-request"
+const RELAY_RESPONSE_HEADER = "x-docks-relay-response"
+const RELAY_TOKEN_HEADER = "x-docks-relay-token"
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-length",
@@ -266,7 +266,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ])
 
-export function createSkaperRelay(options) {
+export function createDocksRelay(options) {
   if (
     !options ||
     typeof options.path !== "string" ||
@@ -275,7 +275,7 @@ export function createSkaperRelay(options) {
     options.path.includes("?") ||
     options.path.includes("#")
   ) {
-    throw new TypeError("createSkaperRelay requires an absolute relay path.")
+    throw new TypeError("createDocksRelay requires an absolute relay path.")
   }
 
   const allowedOrigins = new Set(
@@ -286,14 +286,14 @@ export function createSkaperRelay(options) {
     typeof options.allowDestination !== "function"
   ) {
     throw new TypeError(
-      "createSkaperRelay requires allowedOrigins or allowDestination."
+      "createDocksRelay requires allowedOrigins or allowDestination."
     )
   }
 
   const token = randomBytes(32).toString("base64url")
   const webSocketServer = new WebSocketServer({ noServer: true })
   const relay = {
-    __skaperRelay: true,
+    __docksRelay: true,
     path: options.path,
     token,
     handler: null,
@@ -356,21 +356,21 @@ export function createSkaperRelay(options) {
   return relay
 }
 
-export function skaperUI(options) {
+export function docksUI(options) {
   if (!options || typeof options.url !== "string" || !options.url.trim()) {
-    throw new TypeError("skaperUI requires a non-empty OpenAPI url.")
+    throw new TypeError("docksUI requires a non-empty OpenAPI url.")
   }
 
   if (options.password !== undefined && typeof options.password !== "string") {
-    throw new TypeError("skaperUI password option must be a string.")
+    throw new TypeError("docksUI password option must be a string.")
   }
 
   if (
     options.storage !== undefined &&
-    (!options.storage || options.storage.__skaperPostgres !== true)
+    (!options.storage || options.storage.__docksPostgres !== true)
   ) {
     throw new TypeError(
-      "skaperUI storage option must come from createSkaperPostgres()."
+      "docksUI storage option must come from createDocksPostgres()."
     )
   }
 
@@ -385,16 +385,16 @@ export function skaperUI(options) {
     (typeof options.workspaceId !== "string" || !options.workspaceId.trim())
   ) {
     throw new TypeError(
-      "skaperUI workspaceId option must be a non-empty string."
+      "docksUI workspaceId option must be a non-empty string."
     )
   }
 
   if (
     options.relay !== undefined &&
-    (!options.relay || options.relay.__skaperRelay !== true)
+    (!options.relay || options.relay.__docksRelay !== true)
   ) {
     throw new TypeError(
-      "skaperUI relay option must come from createSkaperRelay()."
+      "docksUI relay option must come from createDocksRelay()."
     )
   }
 
@@ -402,13 +402,13 @@ export function skaperUI(options) {
     options.workspaceId?.trim() || createDefaultWorkspaceId(options.url)
   if (options.storage && options.storage.workspaceId !== workspaceId) {
     throw new TypeError(
-      "skaperUI workspaceId must match the PostgreSQL storage workspaceId."
+      "docksUI workspaceId must match the PostgreSQL storage workspaceId."
     )
   }
   const hashedPassword = options.password ? sha256(options.password) : null
-  const html = renderSkaperHtml(options, hashedPassword, workspaceId)
+  const html = renderDocksHtml(options, hashedPassword, workspaceId)
 
-  return function skaperHandler(context, response) {
+  return function docksHandler(context, response) {
     if (context && typeof context.html === "function") {
       return context.html(html)
     }
@@ -424,7 +424,7 @@ export function skaperUI(options) {
   }
 }
 
-export default skaperUI
+export default docksUI
 
 async function handleRelayRequest(request, token, authorize) {
   try {
@@ -602,7 +602,7 @@ function relayErrorResponse(status, message) {
       status,
       headers: {
         "cache-control": "no-store",
-        "x-skaper-relay-error": "1",
+        "x-docks-relay-error": "1",
       },
     }
   )
@@ -627,7 +627,7 @@ function bridgeWebSocket(client, token, authorize) {
     try {
       const control = JSON.parse(data.toString())
       if (
-        control?.type !== "skaper.connect" ||
+        control?.type !== "docks.connect" ||
         control?.token !== token ||
         typeof control?.request?.url !== "string"
       ) {
@@ -654,7 +654,7 @@ function bridgeWebSocket(client, token, authorize) {
       upstream.on("open", () => {
         ready = true
         if (client.readyState === NodeWebSocket.OPEN) {
-          client.send(JSON.stringify({ type: "skaper.ready" }))
+          client.send(JSON.stringify({ type: "docks.ready" }))
         }
       })
       upstream.on("message", (message, binary) => {
@@ -699,7 +699,7 @@ function bridgeWebSocket(client, token, authorize) {
 
 function sendWebSocketControlError(client, error) {
   if (client.readyState === NodeWebSocket.OPEN) {
-    client.send(JSON.stringify({ type: "skaper.error", error }))
+    client.send(JSON.stringify({ type: "docks.error", error }))
   }
 }
 
@@ -742,7 +742,7 @@ function parseRelayHeaders(value) {
     const lowerName = name.toLowerCase()
     if (
       HOP_BY_HOP_HEADERS.has(lowerName) ||
-      lowerName.startsWith("x-skaper-relay-")
+      lowerName.startsWith("x-docks-relay-")
     ) {
       continue
     }
@@ -864,10 +864,10 @@ class RelayError extends Error {
   }
 }
 
-function renderSkaperHtml(options, hashedPassword, workspaceId) {
-  const title = escapeHtml(options.title || "Skaper · API Workspace")
+function renderDocksHtml(options, hashedPassword, workspaceId) {
+  const title = escapeHtml(options.title || "Docks · API Workspace")
   const url = JSON.stringify(options.url).replaceAll("<", "\\u003c")
-  const loginTemplate = JSON.stringify(SKAPER_LOGIN_TEMPLATE).replaceAll(
+  const loginTemplate = JSON.stringify(DOCKS_LOGIN_TEMPLATE).replaceAll(
     "<",
     "\\u003c"
   )
@@ -896,12 +896,12 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
     <style${nonceAttribute}>${UI_STYLES}</style>
   </head>
   <body>
-    <div id="skaper-root"></div>
+    <div id="docks-root"></div>
     <script type="module"${nonceAttribute}>
       // Apply theme immediately
       const workspaceId = ${serializedWorkspaceId};
-      const themeStorageKey = "skaper:" + encodeURIComponent(workspaceId) + ":ui-theme";
-      const authStorageKey = "__skaper_auth:" + encodeURIComponent(workspaceId);
+      const themeStorageKey = "docks:" + encodeURIComponent(workspaceId) + ":ui-theme";
+      const authStorageKey = "__docks_auth:" + encodeURIComponent(workspaceId);
       const savedTheme = localStorage.getItem(themeStorageKey) || "system";
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       const activeTheme = savedTheme === "system" ? systemTheme : savedTheme;
@@ -909,13 +909,13 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
 
       ${sha256.toString()}
 
-      async function loadSkaper() {
+      async function loadDocks() {
         try {
           const openApiUrl = ${url};
           const relay = ${serializedRelay};
           const storagePath = ${serializedStoragePath};
-          globalThis.__SKAPER_RELAY__ = relay;
-          globalThis.__SKAPER_STORAGE_URL__ = storagePath;
+          globalThis.__DOCKS_RELAY__ = relay;
+          globalThis.__DOCKS_STORAGE_URL__ = storagePath;
           const resolvedOpenApiUrl = new URL(openApiUrl, window.location.href);
           const shouldRelayOpenApi = relay && resolvedOpenApiUrl.origin !== window.location.origin;
           const response = shouldRelayOpenApi
@@ -924,8 +924,8 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
                 credentials: "same-origin",
                 headers: {
                   "content-type": "application/octet-stream",
-                  "x-skaper-relay-token": relay.token,
-                  "x-skaper-relay-request": encodeRelayMetadata({
+                  "x-docks-relay-token": relay.token,
+                  "x-docks-relay-request": encodeRelayMetadata({
                     url: resolvedOpenApiUrl.toString(),
                     method: "GET",
                     headers: [],
@@ -933,21 +933,21 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
                 },
               })
             : await fetch(openApiUrl, { credentials: "same-origin" });
-          if (response.headers.has("x-skaper-relay-error")) {
+          if (response.headers.has("x-docks-relay-error")) {
             const payload = await response.json();
             throw new Error(payload.error || "OpenAPI relay request failed");
           }
           if (!response.ok) {
             throw new Error("Unable to load OpenAPI document (" + response.status + ")");
           }
-          globalThis.__SKAPER_OPENAPI_SPEC__ = await response.json();
-          globalThis.__SKAPER_WORKSPACE_ID__ = workspaceId;
+          globalThis.__DOCKS_OPENAPI_SPEC__ = await response.json();
+          globalThis.__DOCKS_WORKSPACE_ID__ = workspaceId;
           ${UI_SCRIPT}
         } catch (error) {
-          const root = document.getElementById("skaper-root");
+          const root = document.getElementById("docks-root");
           if (root) {
             root.innerHTML =
-              '<main style="font-family:system-ui;padding:32px"><h1>Unable to load Skaper</h1><p></p></main>';
+              '<main style="font-family:system-ui;padding:32px"><h1>Unable to load Docks</h1><p></p></main>';
             root.querySelector("p").textContent = error instanceof Error
               ? error.message
               : String(error);
@@ -970,14 +970,14 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
       } else if (passwordHash) {
         const isAuthenticated = sessionStorage.getItem(authStorageKey) === passwordHash;
         if (isAuthenticated) {
-          loadSkaper();
+          loadDocks();
         } else {
-          const root = document.getElementById("skaper-root");
+          const root = document.getElementById("docks-root");
           root.innerHTML = ${loginTemplate};
 
-          const form = document.getElementById("skaper-login-form");
-          const input = document.getElementById("skaper-password-input");
-          const errorMsg = document.getElementById("skaper-error-message");
+          const form = document.getElementById("docks-login-form");
+          const input = document.getElementById("docks-password-input");
+          const errorMsg = document.getElementById("docks-error-message");
 
           form.addEventListener("submit", (e) => {
             e.preventDefault();
@@ -985,33 +985,33 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
             if (inputHash === passwordHash) {
               sessionStorage.setItem(authStorageKey, passwordHash);
               root.innerHTML = "";
-              loadSkaper();
+              loadDocks();
             } else {
               errorMsg.style.display = "block";
-              errorMsg.classList.remove("skaper-shake");
+              errorMsg.classList.remove("docks-shake");
               void errorMsg.offsetWidth; // trigger reflow
-              errorMsg.classList.add("skaper-shake");
+              errorMsg.classList.add("docks-shake");
               input.value = "";
               input.focus();
             }
           });
         }
       } else {
-        loadSkaper();
+        loadDocks();
       }
 
       async function authenticateRemoteStorage() {
         const session = await remoteAuthRequest({ action: "session" });
         if (session.ok) {
-          loadSkaper();
+          loadDocks();
           return;
         }
-        const root = document.getElementById("skaper-root");
+        const root = document.getElementById("docks-root");
         root.innerHTML = ${loginTemplate};
-        const form = document.getElementById("skaper-login-form");
-        const input = document.getElementById("skaper-password-input");
-        const errorMsg = document.getElementById("skaper-error-message");
-        const submit = document.getElementById("skaper-submit-btn");
+        const form = document.getElementById("docks-login-form");
+        const input = document.getElementById("docks-password-input");
+        const errorMsg = document.getElementById("docks-error-message");
+        const submit = document.getElementById("docks-submit-btn");
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
           if (submit.disabled) return;
@@ -1026,13 +1026,13 @@ function renderSkaperHtml(options, hashedPassword, workspaceId) {
             });
             if (result.ok) {
               root.innerHTML = "";
-              loadSkaper();
+              loadDocks();
               return;
             }
             errorMsg.style.display = "block";
-            errorMsg.classList.remove("skaper-shake");
+            errorMsg.classList.remove("docks-shake");
             void errorMsg.offsetWidth;
-            errorMsg.classList.add("skaper-shake");
+            errorMsg.classList.add("docks-shake");
             input.value = "";
             input.focus();
           } finally {

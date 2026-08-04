@@ -1,5 +1,5 @@
 import { buildRequestUrl } from "../api-request"
-import { skaperFetch } from "../relay"
+import { docksFetch } from "../relay"
 import type { KeyValueRow } from "@/components/api-reference/types"
 
 export type ParsedServerSentEvent = {
@@ -51,7 +51,7 @@ export function openSseConnection({
 }) {
   const abortController = new AbortController()
 
-  skaperFetch(url, {
+  docksFetch(url, {
     method,
     headers: {
       ...headers,

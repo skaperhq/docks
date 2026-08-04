@@ -8,7 +8,7 @@ import { promisify } from "node:util"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { createSkaperMcp, __testing } from "../dist/package/mcp.js"
+import { createDocksMcp, __testing } from "../dist/package/mcp.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -150,14 +150,14 @@ await listen(mcpHttpServer)
 const mcpOrigin = originOf(mcpHttpServer)
 const mcpPort = new URL(mcpOrigin).port
 
-const mcp = await createSkaperMcp({
+const mcp = await createDocksMcp({
   openapi: document,
   knowledge,
   mcpBearerToken: "mcp-secret",
   allowedHosts: [`127.0.0.1:${mcpPort}`],
   clientHeaders: {
     forward: {
-      "x-skaper-api-authorization": "authorization",
+      "x-docks-api-authorization": "authorization",
       "x-tenant-id": "x-tenant-id",
     },
   },
@@ -168,7 +168,7 @@ const mcp = await createSkaperMcp({
     )
     assert.equal(forwardedHeaders.authorization, "Bearer upstream-secret")
     assert.equal(forwardedHeaders["x-tenant-id"], "tenant-123")
-    return { "x-api-client": "skaper-test", "x-tenant-id": "host-tenant" }
+    return { "x-api-client": "docks-test", "x-tenant-id": "host-tenant" }
   },
   execution: { allowedOrigins: [upstreamOrigin] },
 })
@@ -182,14 +182,14 @@ const transport = new StreamableHTTPClientTransport(
     requestInit: {
       headers: {
         Authorization: "Bearer mcp-secret",
-        "X-Skaper-API-Authorization": "Bearer upstream-secret",
+        "X-Docks-API-Authorization": "Bearer upstream-secret",
         "X-Tenant-ID": "tenant-123",
         "X-Not-Allowed": "must-not-leak",
       },
     },
   }
 )
-const client = new Client({ name: "skaper-test", version: "1.0.0" })
+const client = new Client({ name: "docks-test", version: "1.0.0" })
 await client.connect(transport)
 
 const tools = await client.listTools()
@@ -203,7 +203,7 @@ assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
 const resources = await client.listResources()
 assert.ok(
   resources.resources.some(
-    (resource) => resource.uri === "skaper://api/overview"
+    (resource) => resource.uri === "docks://api/overview"
   )
 )
 assert.ok(
@@ -294,7 +294,7 @@ assert.deepEqual(call.structuredContent.body, {
   headers: {
     authorization: "Bearer upstream-secret",
     tenant: "host-tenant",
-    apiClient: "skaper-test",
+    apiClient: "docks-test",
     requestId: "request-1",
   },
 })
@@ -338,7 +338,7 @@ const stream = await client.callTool({
 assert.equal(stream.isError, true)
 assert.equal(stream.structuredContent.code, "UNSUPPORTED_OPERATION")
 
-const tempDirectory = await mkdtemp(join(tmpdir(), "skaper-mcp-"))
+const tempDirectory = await mkdtemp(join(tmpdir(), "docks-mcp-"))
 const yamlPath = join(tempDirectory, "openapi.yaml")
 const schemasPath = join(tempDirectory, "schemas.yaml")
 await writeFile(
@@ -349,7 +349,7 @@ await writeFile(
   yamlPath,
   "openapi: 3.0.3\ninfo:\n  title: YAML API\n  version: 1.0.0\npaths: {}\ncomponents:\n  schemas:\n    User:\n      $ref: './schemas.yaml#/User'\n"
 )
-const yamlMcp = await createSkaperMcp({ openapi: yamlPath })
+const yamlMcp = await createDocksMcp({ openapi: yamlPath })
 assert.equal(yamlMcp.model.info.title, "YAML API")
 assert.equal(yamlMcp.model.document.components.schemas.User.type, "object")
 assert.match(
@@ -367,7 +367,7 @@ const stdioTransport = new StdioClientTransport({
   ],
   stderr: "pipe",
 })
-const stdioClient = new Client({ name: "skaper-stdio-test", version: "1.0.0" })
+const stdioClient = new Client({ name: "docks-stdio-test", version: "1.0.0" })
 await stdioClient.connect(stdioTransport)
 const stdioTools = await stdioClient.listTools()
 assert.equal(stdioTools.tools.length, 4)
@@ -400,7 +400,7 @@ const fakeCodePath = join(tempDirectory, "fake-code.mjs")
 const fakeCodeOutput = join(tempDirectory, "code-arguments.json")
 await writeFile(
   fakeCodePath,
-  "#!/usr/bin/env node\nimport { writeFileSync } from 'node:fs'\nwriteFileSync(process.env.SKAPER_TEST_CODE_OUTPUT, JSON.stringify(process.argv.slice(2)))\n"
+  "#!/usr/bin/env node\nimport { writeFileSync } from 'node:fs'\nwriteFileSync(process.env.DOCKS_TEST_CODE_OUTPUT, JSON.stringify(process.argv.slice(2)))\n"
 )
 await chmod(fakeCodePath, 0o755)
 const installed = await execFileAsync(
@@ -416,8 +416,8 @@ const installed = await execFileAsync(
   {
     env: {
       ...process.env,
-      SKAPER_VSCODE_COMMAND: fakeCodePath,
-      SKAPER_TEST_CODE_OUTPUT: fakeCodeOutput,
+      DOCKS_VSCODE_COMMAND: fakeCodePath,
+      DOCKS_TEST_CODE_OUTPUT: fakeCodeOutput,
     },
   }
 )

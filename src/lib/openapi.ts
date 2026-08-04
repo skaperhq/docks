@@ -207,9 +207,9 @@ export type ApiOperationGroup = {
 
 const configuredOpenApiSpec = (
   globalThis as typeof globalThis & {
-    __SKAPER_OPENAPI_SPEC__?: unknown
+    __DOCKS_OPENAPI_SPEC__?: unknown
   }
-).__SKAPER_OPENAPI_SPEC__
+).__DOCKS_OPENAPI_SPEC__
 const openApiSpec = (configuredOpenApiSpec ?? openApiSpecJson) as OpenApiSpec
 const httpMethods = new Set<HttpMethod>([
   "delete",

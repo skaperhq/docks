@@ -46,7 +46,7 @@ describe("SidebarRail", () => {
     fireEvent.click(rail)
 
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("360px")
-    expect(window.localStorage.getItem("skaper:sidebar-width")).toBe("360")
+    expect(window.localStorage.getItem("docks:sidebar-width")).toBe("360")
     expect(
       rail.closest<HTMLElement>('[data-slot="sidebar"]')?.dataset.state
     ).toBe("expanded")

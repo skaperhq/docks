@@ -50,11 +50,11 @@ const commonJsModule = serverModule
     'import { WebSocket as NodeWebSocket, WebSocketServer } from "ws"',
     'const { WebSocket: NodeWebSocket, WebSocketServer } = require("ws")'
   )
-  .replace("export function createSkaperRelay", "function createSkaperRelay")
-  .replace("export function skaperUI", "function skaperUI")
+  .replace("export function createDocksRelay", "function createDocksRelay")
+  .replace("export function docksUI", "function docksUI")
   .replace(
-    "export default skaperUI",
-    "module.exports = skaperUI\nmodule.exports.skaperUI = skaperUI\nmodule.exports.createSkaperRelay = createSkaperRelay"
+    "export default docksUI",
+    "module.exports = docksUI\nmodule.exports.docksUI = docksUI\nmodule.exports.createDocksRelay = createDocksRelay"
   )
 
 await writeFile(resolve(outputDirectory, "index.js"), serverModule)
@@ -86,10 +86,10 @@ await writeFile(
 )
 await writeFile(
   resolve(outputDirectory, "mcp.cjs"),
-  `"use strict"\n\nexports.createSkaperMcp = async function createSkaperMcp(options) {\n  const runtime = await import("./mcp.js")\n  return runtime.createSkaperMcp(options)\n}\n`
+  `"use strict"\n\nexports.createDocksMcp = async function createDocksMcp(options) {\n  const runtime = await import("./mcp.js")\n  return runtime.createDocksMcp(options)\n}\n`
 )
 await writeFile(
   resolve(outputDirectory, "postgres.cjs"),
-  `"use strict"\n\nexports.createSkaperPostgres = async function createSkaperPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createSkaperPostgres(options)\n}\n\nexports.createPostgresStorageAdapter = async function createPostgresStorageAdapter(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createPostgresStorageAdapter(options)\n}\n\nexports.migrateSkaperPostgres = async function migrateSkaperPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.migrateSkaperPostgres(options)\n}\n`
+  `"use strict"\n\nexports.createDocksPostgres = async function createDocksPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createDocksPostgres(options)\n}\n\nexports.createPostgresStorageAdapter = async function createPostgresStorageAdapter(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createPostgresStorageAdapter(options)\n}\n\nexports.migrateDocksPostgres = async function migrateDocksPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.migrateDocksPostgres(options)\n}\n`
 )
 await chmod(resolve(outputDirectory, "cli.js"), 0o755)

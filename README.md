@@ -1,6 +1,6 @@
-# Skaper
+# Docks
 
-Skaper is a self-contained OpenAPI documentation, API request UI, and MCP server for Node.js routes. Mount the browser workspace in your app or give coding agents and custom agent frameworks controlled access to the same API knowledge.
+Docks is a self-contained OpenAPI documentation, API request UI, and MCP server for Node.js routes. Mount the browser workspace in your app or give coding agents and custom agent frameworks controlled access to the same API knowledge.
 
 ## Install
 
@@ -8,11 +8,11 @@ Skaper is a self-contained OpenAPI documentation, API request UI, and MCP server
 npm install @skaper/docks
 ```
 
-Skaper does not require a React component, a CSS import, or static asset hosting in the consuming project.
+Docks does not require a React component, a CSS import, or static asset hosting in the consuming project.
 
 ## Bring your own PostgreSQL
 
-Skaper uses browser-scoped IndexedDB by default. To share workspace state and
+Docks uses browser-scoped IndexedDB by default. To share workspace state and
 custom API knowledge between developers and MCP, initialize any PostgreSQL
 database with the bundled migration command:
 
@@ -21,7 +21,7 @@ DATABASE_URL="postgresql://user:password@host/database" \
   npx @skaper/docks db migrate
 ```
 
-Use `--database-url-env SKAPER_DATABASE_URL` to read a differently named
+Use `--database-url-env DOCKS_DATABASE_URL` to read a differently named
 environment variable, or `--dry-run` to inspect the SQL without connecting.
 Every table is explicitly qualified under the `skaper` schema. PostgreSQL
 requires index names to be unqualified in `CREATE INDEX`; each index targets a
@@ -33,16 +33,16 @@ Create one workspace-scoped storage service and reuse it for the UI and MCP:
 
 ```ts
 import { Pool } from "pg"
-import { skaperUI } from "@skaper/docks"
-import { createSkaperMcp } from "@skaper/docks/mcp"
-import { createSkaperPostgres } from "@skaper/docks/postgres"
+import { docksUI } from "@skaper/docks"
+import { createDocksMcp } from "@skaper/docks/mcp"
+import { createDocksPostgres } from "@skaper/docks/postgres"
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-const postgres = await createSkaperPostgres({
+const postgres = await createDocksPostgres({
   pool,
   workspaceId: "acme-api",
   path: "/docs/_storage",
-  password: process.env.SKAPER_UI_PASSWORD!,
+  password: process.env.DOCKS_UI_PASSWORD!,
   // Set this when TLS terminates at a reverse proxy.
   origin: "https://api.example.com",
 })
@@ -50,14 +50,14 @@ const postgres = await createSkaperPostgres({
 app.all(postgres.path, postgres.handler)
 app.get(
   "/docs",
-  skaperUI({
+  docksUI({
     url: "/openapi.json",
     workspaceId: "acme-api",
     storage: postgres,
   })
 )
 
-const mcp = await createSkaperMcp({
+const mcp = await createDocksMcp({
   openapi: "/openapi.json",
   knowledge: postgres,
   execution: {
@@ -81,7 +81,7 @@ server-side `apiHeaders` or controlled forwarding options.
 
 ## MCP server
 
-Skaper turns an OpenAPI 3.0 or 3.1 document into four stable MCP tools:
+Docks turns an OpenAPI 3.0 or 3.1 document into four stable MCP tools:
 
 - `get_api_overview`
 - `search_api`
@@ -89,12 +89,12 @@ Skaper turns an OpenAPI 3.0 or 3.1 document into four stable MCP tools:
 - `call_api`
 
 It also exposes overview, source document, and operation resources under
-`skaper://api/*`. The server accepts JSON or YAML from a local file, an HTTP(S)
+`docks://api/*`. The server accepts JSON or YAML from a local file, an HTTP(S)
 URL, or an object supplied through the library API.
 
 ### Add a hosted MCP to VS Code
 
-When an API already hosts Skaper's Streamable HTTP endpoint, add it to VS Code
+When an API already hosts Docks's Streamable HTTP endpoint, add it to VS Code
 with one command:
 
 ```bash
@@ -138,7 +138,7 @@ Pass server-controlled API credentials from environment variables without
 putting them in model tool arguments:
 
 ```bash
-skaper mcp ./openapi.yaml \
+docks mcp ./openapi.yaml \
   --api-header-env authorization=ACME_API_AUTHORIZATION
 ```
 
@@ -149,12 +149,12 @@ Enable writes deliberately with repeatable `--allow-method` or
 ### Self-hosted Streamable HTTP
 
 ```bash
-export SKAPER_MCP_TOKEN="replace-me"
+export DOCKS_MCP_TOKEN="replace-me"
 
-skaper mcp ./openapi.yaml \
+docks mcp ./openapi.yaml \
   --transport http \
   --host 0.0.0.0 \
-  --mcp-token-env SKAPER_MCP_TOKEN
+  --mcp-token-env DOCKS_MCP_TOKEN
 ```
 
 The endpoint defaults to `http://127.0.0.1:3210/mcp`. Non-loopback servers
@@ -168,18 +168,18 @@ Headers received from LangChain or another HTTP MCP client are not forwarded
 automatically. Select and optionally rename each allowed header:
 
 ```ts
-import { createSkaperMcp } from "@skaper/docks/mcp"
+import { createDocksMcp } from "@skaper/docks/mcp"
 
-const mcp = await createSkaperMcp({
+const mcp = await createDocksMcp({
   openapi: "./openapi.yaml",
   clientHeaders: {
     forward: {
-      "x-skaper-api-authorization": "authorization",
+      "x-docks-api-authorization": "authorization",
       "x-tenant-id": "x-tenant-id",
     },
   },
   apiHeaders: async ({ operation, forwardedHeaders }) => ({
-    "x-api-client": "skaper",
+    "x-api-client": "docks",
   }),
 })
 ```
@@ -196,7 +196,7 @@ client = MultiServerMCPClient({
         "url": "https://mcp.example.com/mcp",
         "headers": {
             "Authorization": "Bearer MCP_ACCESS_TOKEN",
-            "X-Skaper-API-Authorization": "Bearer UPSTREAM_API_TOKEN",
+            "X-Docks-API-Authorization": "Bearer UPSTREAM_API_TOKEN",
             "X-Tenant-ID": "tenant_123",
         },
     }
@@ -210,12 +210,12 @@ blocked and credentials are never returned in tool output.
 ### Mount in Hono or Express
 
 ```ts
-import { createSkaperMcp } from "@skaper/docks/mcp"
+import { createDocksMcp } from "@skaper/docks/mcp"
 
-const mcp = await createSkaperMcp({
+const mcp = await createDocksMcp({
   openapi: "./openapi.yaml",
   baseUrl: "https://api.example.com",
-  mcpBearerToken: process.env.SKAPER_MCP_TOKEN,
+  mcpBearerToken: process.env.DOCKS_MCP_TOKEN,
 })
 
 // Hono / Web Request
@@ -225,7 +225,7 @@ app.all("/mcp", (context) => mcp.fetch(context.req.raw))
 expressApp.all("/mcp", mcp.nodeHandler)
 ```
 
-`createSkaperMcp` also accepts `openapiHeaders`, `allowedHosts`, a custom
+`createDocksMcp` also accepts `openapiHeaders`, `allowedHosts`, a custom
 `authorizeMcpRequest`, and execution limits. API calls are restricted to the
 configured or documented server origin, same-origin redirects, a 30-second
 timeout, and a 1 MiB response by default. SSE, WebSocket, binary upload, and
@@ -242,58 +242,58 @@ WORKDIR /app
 COPY openapi.yaml ./openapi.yaml
 RUN npm install --omit=dev @skaper/docks
 EXPOSE 3210
-CMD ["./node_modules/.bin/skaper", "mcp", "./openapi.yaml", "--transport", "http", "--host", "0.0.0.0", "--mcp-token-env", "SKAPER_MCP_TOKEN"]
+CMD ["./node_modules/.bin/docks", "mcp", "./openapi.yaml", "--transport", "http", "--host", "0.0.0.0", "--mcp-token-env", "DOCKS_MCP_TOKEN"]
 ```
 
 ## Hono
 
 ```ts
 import { Hono } from "hono"
-import { skaperUI } from "@skaper/docks"
+import { docksUI } from "@skaper/docks"
 
 const swagger = new Hono()
 
-swagger.get("/", skaperUI({ url: "/docs/openapi.json" }))
+swagger.get("/", docksUI({ url: "/docs/openapi.json" }))
 ```
 
 You can also mount the handler directly on an existing app:
 
 ```ts
-app.get("/docs", skaperUI({ url: "/docs/openapi.json" }))
+app.get("/docs", docksUI({ url: "/docs/openapi.json" }))
 ```
 
 ## Express
 
 ```ts
 import express from "express"
-import { skaperUI } from "@skaper/docks"
+import { docksUI } from "@skaper/docks"
 
 const app = express()
 
-app.get("/docs", skaperUI({ url: "/docs/openapi.json" }))
+app.get("/docs", docksUI({ url: "/docs/openapi.json" }))
 ```
 
 The configured URL is fetched by the browser, so it can be relative to the host application or an absolute URL with the appropriate CORS policy. For APIs that cannot enable CORS, configure the same-origin relay below.
 
 ## Cross-origin relay
 
-The relay is opt-in and restricted to explicitly allowed upstream origins. Skaper continues to call same-origin APIs directly; only cross-origin OpenAPI, HTTP, SSE, and WebSocket traffic uses the relay.
+The relay is opt-in and restricted to explicitly allowed upstream origins. Docks continues to call same-origin APIs directly; only cross-origin OpenAPI, HTTP, SSE, and WebSocket traffic uses the relay.
 
 ### Express
 
 ```ts
 import express from "express"
-import { createSkaperRelay, skaperUI } from "@skaper/docks"
+import { createDocksRelay, docksUI } from "@skaper/docks"
 
 const app = express()
-const relay = createSkaperRelay({
+const relay = createDocksRelay({
   path: "/docs/_relay",
   allowedOrigins: ["https://api.example.com"],
 })
 
 app.get(
   "/docs",
-  skaperUI({
+  docksUI({
     url: "https://api.example.com/openapi.json",
     relay,
   })
@@ -314,17 +314,17 @@ Mount the relay before catch-all raw body parsers. It uses an opaque request bod
 ```ts
 import { serve } from "@hono/node-server"
 import { Hono } from "hono"
-import { createSkaperRelay, skaperUI } from "@skaper/docks"
+import { createDocksRelay, docksUI } from "@skaper/docks"
 
 const app = new Hono()
-const relay = createSkaperRelay({
+const relay = createDocksRelay({
   path: "/docs/_relay",
   allowedOrigins: ["https://api.example.com"],
 })
 
 app.get(
   "/docs",
-  skaperUI({
+  docksUI({
     url: "https://api.example.com/openapi.json",
     relay,
   })
@@ -342,12 +342,12 @@ server.on("upgrade", (request, socket, head) => {
 
 Allowlist entries are exact origins. An `https://` entry also authorizes the corresponding `wss://` endpoint. Private and localhost origins work when explicitly listed. Dynamic destinations can use `allowDestination`; callback-authorized private networks additionally require `allowPrivateNetwork: true`.
 
-Protect deployed documentation and its relay using the host application's real authentication and rate limiting. The optional Skaper UI password is a convenience lock, not server-side authorization.
+Protect deployed documentation and its relay using the host application's real authentication and rate limiting. The optional Docks UI password is a convenience lock, not server-side authorization.
 
 ## Options
 
 ```ts
-skaperUI({
+docksUI({
   url: "/docs/openapi.json",
   title: "Acme API",
   workspaceId: "acme-api",
@@ -358,13 +358,13 @@ skaperUI({
 
 - `url` is required and points to the OpenAPI JSON document.
 - `title` sets the generated HTML document title.
-- `workspaceId` is a stable identifier for this API's browser data. Skaper
+- `workspaceId` is a stable identifier for this API's browser data. Docks
   derives one from the host project and OpenAPI URL by default; set it
   explicitly when multiple apps are launched from the same project directory.
 - `nonce` applies a Content Security Policy nonce to the embedded style and module script.
-- `relay` enables automatic cross-origin execution using a relay returned by `createSkaperRelay`.
+- `relay` enables automatic cross-origin execution using a relay returned by `createDocksRelay`.
 
-Skaper serves one complete HTML document. Its browser code and visual styles are embedded in that document, so there is no CSS or JavaScript asset for the host application to import or serve.
+Docks serves one complete HTML document. Its browser code and visual styles are embedded in that document, so there is no CSS or JavaScript asset for the host application to import or serve.
 
 Without the optional PostgreSQL configuration, request tabs, environments,
 variables, saved responses, and response preferences use a workspace-scoped

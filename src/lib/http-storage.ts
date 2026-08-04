@@ -1,15 +1,15 @@
 import type { StorageAdapter } from "./storage-adapter"
 
 declare global {
-  var __SKAPER_STORAGE_URL__: string | undefined
+  var __DOCKS_STORAGE_URL__: string | undefined
 }
 
 export function getRuntimeStorageUrl() {
-  const value = globalThis.__SKAPER_STORAGE_URL__
+  const value = globalThis.__DOCKS_STORAGE_URL__
   return typeof value === "string" && value.startsWith("/") ? value : undefined
 }
 
-/** Creates a browser adapter for the authenticated Skaper storage endpoint. */
+/** Creates a browser adapter for the authenticated Docks storage endpoint. */
 export function createHttpStorageAdapter(url: string): StorageAdapter {
   async function call<T>(action: string, data?: unknown): Promise<T> {
     const response = await fetch(url, {
@@ -23,7 +23,7 @@ export function createHttpStorageAdapter(url: string): StorageAdapter {
       throw new Error(
         typeof payload.error === "string"
           ? payload.error
-          : `Skaper storage request failed (${response.status}).`
+          : `Docks storage request failed (${response.status}).`
       )
     }
     return payload as T

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import {
-  createSkaperPostgres,
-  migrateSkaperPostgres,
+  createDocksPostgres,
+  migrateDocksPostgres,
   __testing,
 } from "./postgres-runtime.mjs"
-import { skaperUI } from "../dist/package/index.js"
+import { docksUI } from "../dist/package/index.js"
 
 async function main() {
   const migration = await readFile(
@@ -53,7 +53,7 @@ async function main() {
     assert.match(match[2], /^skaper\./)
   }
 
-  const dryRun = await migrateSkaperPostgres({
+  const dryRun = await migrateDocksPostgres({
     client: { query() {} },
     dryRun: true,
   })
@@ -64,7 +64,7 @@ async function main() {
   assert.match(dryRun.sql, /CREATE SCHEMA IF NOT EXISTS skaper/)
 
   const pool = new AuthPool()
-  const postgres = await createSkaperPostgres({
+  const postgres = await createDocksPostgres({
     pool,
     workspaceId: "test-workspace",
     path: "/docs/_storage",
@@ -72,7 +72,7 @@ async function main() {
     sessionTtlMs: 60_000,
   })
 
-  const html = skaperUI({
+  const html = docksUI({
     url: "/openapi.json",
     workspaceId: "test-workspace",
     storage: postgres,
@@ -82,7 +82,7 @@ async function main() {
   assert.equal(html.includes(pool.passwordHash.toString("hex")), false)
   assert.throws(
     () =>
-      skaperUI({
+      docksUI({
         url: "/openapi.json",
         workspaceId: "test-workspace",
         storage: postgres,
@@ -234,14 +234,14 @@ class AuthPool {
 }
 
 async function runOptionalIntegrationTest() {
-  const connectionString = process.env.SKAPER_TEST_DATABASE_URL
+  const connectionString = process.env.DOCKS_TEST_DATABASE_URL
   if (!connectionString) return
   const { Pool } = await import("pg")
   const database = new Pool({ connectionString })
   try {
     const before = await snapshotNonSkaperObjects(database)
-    const first = await migrateSkaperPostgres({ client: database })
-    const second = await migrateSkaperPostgres({ client: database })
+    const first = await migrateDocksPostgres({ client: database })
+    const second = await migrateDocksPostgres({ client: database })
     const after = await snapshotNonSkaperObjects(database)
     assert.deepEqual(after, before)
     assert.ok(

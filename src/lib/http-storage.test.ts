@@ -3,15 +3,15 @@ import { createHttpStorageAdapter, getRuntimeStorageUrl } from "./http-storage"
 
 describe("authenticated HTTP storage", () => {
   afterEach(() => {
-    globalThis.__SKAPER_STORAGE_URL__ = undefined
+    globalThis.__DOCKS_STORAGE_URL__ = undefined
     vi.unstubAllGlobals()
   })
 
   test("reads the server-injected same-origin path", () => {
-    globalThis.__SKAPER_STORAGE_URL__ = "/docs/_storage"
+    globalThis.__DOCKS_STORAGE_URL__ = "/docs/_storage"
     expect(getRuntimeStorageUrl()).toBe("/docs/_storage")
 
-    globalThis.__SKAPER_STORAGE_URL__ = "https://other.test/storage"
+    globalThis.__DOCKS_STORAGE_URL__ = "https://other.test/storage"
     expect(getRuntimeStorageUrl()).toBeUndefined()
   })
 

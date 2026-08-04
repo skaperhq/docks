@@ -1,13 +1,13 @@
 const DEFAULT_WORKSPACE_ID = "development"
 
-type SkaperGlobals = typeof globalThis & {
-  __SKAPER_WORKSPACE_ID__?: unknown
+type DocksGlobals = typeof globalThis & {
+  __DOCKS_WORKSPACE_ID__?: unknown
 }
 
 /** Returns the workspace configured by the server-generated browser entry. */
 export function getRuntimeWorkspaceId() {
-  const configuredWorkspaceId = (globalThis as SkaperGlobals)
-    .__SKAPER_WORKSPACE_ID__
+  const configuredWorkspaceId = (globalThis as DocksGlobals)
+    .__DOCKS_WORKSPACE_ID__
 
   return typeof configuredWorkspaceId === "string" &&
     configuredWorkspaceId.trim()
@@ -17,7 +17,7 @@ export function getRuntimeWorkspaceId() {
 
 /** Creates a localStorage key whose value cannot leak into another workspace. */
 export function getWorkspaceStorageKey(workspaceId: string, key: string) {
-  return `skaper:${encodeURIComponent(workspaceId)}:${key}`
+  return `docks:${encodeURIComponent(workspaceId)}:${key}`
 }
 
 export { DEFAULT_WORKSPACE_ID }

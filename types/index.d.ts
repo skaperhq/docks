@@ -1,4 +1,4 @@
-export type SkaperUIOptions = {
+export type DocksUIOptions = {
   /** URL that the browser should fetch to load the OpenAPI JSON document. */
   url: string
   /** Optional HTML document title. */
@@ -12,38 +12,38 @@ export type SkaperUIOptions = {
    * Defaults to an identifier derived from the host project and OpenAPI URL.
    */
   workspaceId?: string
-  /** Authenticated PostgreSQL storage returned by createSkaperPostgres(). */
-  storage?: SkaperRemoteStorage
+  /** Authenticated PostgreSQL storage returned by createDocksPostgres(). */
+  storage?: DocksRemoteStorage
   /** Optional same-origin relay used for cross-origin API traffic. */
-  relay?: SkaperRelay
+  relay?: DocksRelay
 }
 
-export type SkaperRemoteStorage = {
+export type DocksRemoteStorage = {
   readonly path: string
   readonly workspaceId: string
 }
 
-export type SkaperRelayTransport = "http" | "websocket"
+export type DocksRelayTransport = "http" | "websocket"
 
-export type SkaperRelayDestination = {
+export type DocksRelayDestination = {
   url: URL
-  transport: SkaperRelayTransport
+  transport: DocksRelayTransport
 }
 
-export type SkaperRelayOptions = {
+export type DocksRelayOptions = {
   /** Same-origin path on which the host mounts the relay handler. */
   path: string
   /** Exact upstream origins permitted by the relay. */
   allowedOrigins?: string[]
   /** Optional dynamic destination authorization hook. */
   allowDestination?: (
-    destination: SkaperRelayDestination
+    destination: DocksRelayDestination
   ) => boolean | Promise<boolean>
   /** Allows callback-authorized private-network destinations. Defaults to false. */
   allowPrivateNetwork?: boolean
 }
 
-export type SkaperRelay = {
+export type DocksRelay = {
   readonly path: string
   readonly handler: {
     (context: { req: { raw: Request } }): Promise<Response>
@@ -67,18 +67,16 @@ export type ExpressResponseLike = {
   send: (content: string) => unknown
 }
 
-export type SkaperHandler = {
+export type DocksHandler = {
   (context: HonoContextLike): Response | Promise<Response>
   (request: unknown, response: ExpressResponseLike): unknown
   (): Response
 }
 
-/** Creates a self-contained HTML route handler for Skaper. */
-export declare function skaperUI(options: SkaperUIOptions): SkaperHandler
+/** Creates a self-contained HTML route handler for Docks. */
+export declare function docksUI(options: DocksUIOptions): DocksHandler
 
 /** Creates a restricted same-origin relay for cross-origin API requests. */
-export declare function createSkaperRelay(
-  options: SkaperRelayOptions
-): SkaperRelay
+export declare function createDocksRelay(options: DocksRelayOptions): DocksRelay
 
-export default skaperUI
+export default docksUI

@@ -4,34 +4,34 @@ import { createServer } from "node:http"
 import { createRequire } from "node:module"
 import { stat } from "node:fs/promises"
 import { WebSocket, WebSocketServer } from "ws"
-import skaperUI, {
-  createSkaperRelay,
-  skaperUI as namedSkaperUI,
+import docksUI, {
+  createDocksRelay,
+  docksUI as namedDocksUI,
 } from "../dist/package/index.js"
-import { createSkaperMcp } from "../dist/package/mcp.js"
+import { createDocksMcp } from "../dist/package/mcp.js"
 import {
-  createSkaperPostgres,
-  migrateSkaperPostgres,
+  createDocksPostgres,
+  migrateDocksPostgres,
 } from "../dist/package/postgres.js"
 
 const require = createRequire(import.meta.url)
-const commonJsSkaperUI = require("../dist/package/index.cjs")
+const commonJsDocksUI = require("../dist/package/index.cjs")
 const commonJsMcp = require("../dist/package/mcp.cjs")
 const commonJsPostgres = require("../dist/package/postgres.cjs")
 
-assert.equal(skaperUI, namedSkaperUI)
-assert.equal(commonJsSkaperUI, commonJsSkaperUI.skaperUI)
-assert.equal(typeof createSkaperRelay, "function")
-assert.equal(typeof commonJsSkaperUI.createSkaperRelay, "function")
-assert.equal(typeof createSkaperMcp, "function")
-assert.equal(typeof commonJsMcp.createSkaperMcp, "function")
-assert.equal(typeof createSkaperPostgres, "function")
-assert.equal(typeof migrateSkaperPostgres, "function")
-assert.equal(typeof commonJsPostgres.createSkaperPostgres, "function")
+assert.equal(docksUI, namedDocksUI)
+assert.equal(commonJsDocksUI, commonJsDocksUI.docksUI)
+assert.equal(typeof createDocksRelay, "function")
+assert.equal(typeof commonJsDocksUI.createDocksRelay, "function")
+assert.equal(typeof createDocksMcp, "function")
+assert.equal(typeof commonJsMcp.createDocksMcp, "function")
+assert.equal(typeof createDocksPostgres, "function")
+assert.equal(typeof migrateDocksPostgres, "function")
+assert.equal(typeof commonJsPostgres.createDocksPostgres, "function")
 assert.equal(typeof commonJsPostgres.createPostgresStorageAdapter, "function")
-assert.equal(typeof commonJsPostgres.migrateSkaperPostgres, "function")
+assert.equal(typeof commonJsPostgres.migrateDocksPostgres, "function")
 
-const migrationDryRun = await migrateSkaperPostgres({
+const migrationDryRun = await migrateDocksPostgres({
   client: { query() {} },
   dryRun: true,
 })
@@ -40,7 +40,7 @@ assert.match(
   /CREATE TABLE IF NOT EXISTS skaper\.custom_requests/
 )
 
-const packageMcp = await createSkaperMcp({
+const packageMcp = await createDocksMcp({
   openapi: {
     openapi: "3.1.0",
     info: { title: "Package MCP", version: "1.0.0" },
@@ -50,7 +50,7 @@ const packageMcp = await createSkaperMcp({
 assert.equal(packageMcp.model.info.title, "Package MCP")
 await packageMcp.close()
 
-const commonJsPackageMcp = await commonJsMcp.createSkaperMcp({
+const commonJsPackageMcp = await commonJsMcp.createDocksMcp({
   openapi: {
     openapi: "3.0.3",
     info: { title: "CommonJS MCP", version: "1.0.0" },
@@ -64,7 +64,7 @@ const cliMode = (await stat(new URL("../dist/package/cli.js", import.meta.url)))
   .mode
 assert.ok(cliMode & 0o100)
 
-const handler = skaperUI({
+const handler = docksUI({
   url: "/docs/openapi.json",
   title: "Example API",
   nonce: "test-nonce",
@@ -75,27 +75,27 @@ assert.match(html, /^<!doctype html>/)
 assert.match(html, /<title>Example API<\/title>/)
 assert.match(html, /const openApiUrl = "\/docs\/openapi.json"/)
 assert.match(html, /const workspaceId = "auto-[a-f0-9]{24}"/)
-assert.match(html, /globalThis\.__SKAPER_WORKSPACE_ID__ = workspaceId/)
+assert.match(html, /globalThis\.__DOCKS_WORKSPACE_ID__ = workspaceId/)
 assert.match(html, /<style nonce="test-nonce">/)
 assert.match(html, /<script type="module" nonce="test-nonce">/)
 assert.doesNotMatch(html, /process\.env/)
 
 // Test password option validation
 assert.throws(() => {
-  skaperUI({
+  docksUI({
     url: "/docs/openapi.json",
     password: 123,
   })
 }, TypeError)
 
 assert.throws(() => {
-  skaperUI({
+  docksUI({
     url: "/docs/openapi.json",
     workspaceId: " ",
   })
 }, TypeError)
 
-const isolatedHtml = skaperUI({
+const isolatedHtml = docksUI({
   url: "/docs/openapi.json",
   workspaceId: "repo-billing",
 })({ html: (content) => content })
@@ -106,14 +106,14 @@ const expectedHash = crypto
   .createHash("sha256")
   .update("supersecretpassword")
   .digest("hex")
-const passwordHandler = skaperUI({
+const passwordHandler = docksUI({
   url: "/docs/openapi.json",
   password: "supersecretpassword",
 })
 const passwordHtml = passwordHandler({ html: (content) => content })
 assert.match(passwordHtml, new RegExp(`const passwordHash = "${expectedHash}"`))
-assert.match(passwordHtml, /class=\\"skaper-login-container\\"/)
-assert.match(passwordHtml, /id=\\"skaper-password-input\\"/)
+assert.match(passwordHtml, /class=\\"docks-login-container\\"/)
+assert.match(passwordHtml, /id=\\"docks-password-input\\"/)
 
 let expressType
 let expressHtml
@@ -137,14 +137,14 @@ assert.match(standardResponse.headers.get("content-type"), /^text\/html/)
 
 assert.throws(
   () =>
-    createSkaperRelay({
+    createDocksRelay({
       path: "relative",
       allowedOrigins: ["https://api.example.com"],
     }),
   /absolute relay path/
 )
 assert.throws(
-  () => createSkaperRelay({ path: "/docs/_relay" }),
+  () => createDocksRelay({ path: "/docs/_relay" }),
   /allowedOrigins or allowDestination/
 )
 
@@ -173,15 +173,15 @@ await new Promise((resolve) => upstreamServer.listen(0, "127.0.0.1", resolve))
 const upstreamAddress = upstreamServer.address()
 assert.ok(upstreamAddress && typeof upstreamAddress === "object")
 const upstreamOrigin = `http://127.0.0.1:${upstreamAddress.port}`
-const relay = createSkaperRelay({
+const relay = createDocksRelay({
   path: "/docs/_relay",
   allowedOrigins: [upstreamOrigin],
 })
-const relayHtml = skaperUI({
+const relayHtml = docksUI({
   url: `${upstreamOrigin}/openapi.json`,
   relay,
 })({ html: (content) => content })
-assert.match(relayHtml, /globalThis\.__SKAPER_RELAY__ = relay/)
+assert.match(relayHtml, /globalThis\.__DOCKS_RELAY__ = relay/)
 assert.match(relayHtml, /"path":"\/docs\/_relay"/)
 
 const relayMetadata = Buffer.from(
@@ -195,8 +195,8 @@ const relayedResponse = await relay.handler(
   new Request("http://docs.local/docs/_relay", {
     method: "POST",
     headers: {
-      "x-skaper-relay-request": relayMetadata,
-      "x-skaper-relay-token": relay.token,
+      "x-docks-relay-request": relayMetadata,
+      "x-docks-relay-token": relay.token,
     },
     body: "relay body",
     duplex: "half",
@@ -220,13 +220,13 @@ const deniedResponse = await relay.handler(
   new Request("http://docs.local/docs/_relay", {
     method: "POST",
     headers: {
-      "x-skaper-relay-request": deniedMetadata,
-      "x-skaper-relay-token": relay.token,
+      "x-docks-relay-request": deniedMetadata,
+      "x-docks-relay-token": relay.token,
     },
   })
 )
 assert.equal(deniedResponse.status, 403)
-assert.equal(deniedResponse.headers.get("x-skaper-relay-error"), "1")
+assert.equal(deniedResponse.headers.get("x-docks-relay-error"), "1")
 
 const relayServer = createServer((request, response) => {
   relay.handler(request, response)
@@ -245,7 +245,7 @@ const webSocketEcho = await new Promise((resolve, reject) => {
   socket.on("open", () => {
     socket.send(
       JSON.stringify({
-        type: "skaper.connect",
+        type: "docks.connect",
         token: relay.token,
         request: {
           url: `ws://127.0.0.1:${upstreamAddress.port}`,
@@ -256,7 +256,7 @@ const webSocketEcho = await new Promise((resolve, reject) => {
   })
   socket.on("message", (message) => {
     const value = message.toString()
-    if (value === JSON.stringify({ type: "skaper.ready" })) {
+    if (value === JSON.stringify({ type: "docks.ready" })) {
       socket.send("websocket relay body")
       return
     }

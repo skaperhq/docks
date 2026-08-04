@@ -14,7 +14,7 @@ import type {
 } from "./environment-actions"
 
 /**
- * Persistence boundary used by Skaper.
+ * Persistence boundary used by Docks.
  *
  * The browser entry installs the IndexedDB implementation. Package consumers
  * can provide the same contract to persist shared workspaces in a remote

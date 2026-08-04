@@ -54,7 +54,7 @@ const FORBIDDEN_UPSTREAM_HEADER_NAMES = new Set([
   "upgrade",
 ])
 
-export async function createSkaperMcp(options) {
+export async function createDocksMcp(options) {
   validateOptions(options)
 
   const loaded = await loadOpenApi(options.openapi, options.openapiHeaders)
@@ -86,7 +86,7 @@ export async function createSkaperMcp(options) {
 
   async function fetchHandler(request) {
     if (!(request instanceof Request)) {
-      throw new TypeError("Skaper MCP fetch() requires a Request.")
+      throw new TypeError("Docks MCP fetch() requires a Request.")
     }
 
     const authorizationFailure = await authorizeMcpRequest(request, options)
@@ -135,7 +135,7 @@ export async function createSkaperMcp(options) {
     nodeHandler,
     async connectStdio() {
       if (stdioServer) {
-        throw new Error("Skaper MCP stdio transport is already connected.")
+        throw new Error("Docks MCP stdio transport is already connected.")
       }
       stdioServer = createServer()
       await stdioServer.connect(new StdioServerTransport())
@@ -158,13 +158,13 @@ function buildMcpServer({
 }) {
   const server = new McpServer(
     {
-      name: options.name?.trim() || "skaper-api",
+      name: options.name?.trim() || "docks-api",
       version: "0.1.1",
     },
     {
       instructions:
         "Use get_api_overview or search_api before get_api_operation. " +
-        "Use call_api only with the canonical operation key or operationId returned by Skaper. " +
+        "Use call_api only with the canonical operation key or operationId returned by Docks. " +
         "Credentials and destinations are controlled by the MCP host.",
     }
   )
@@ -304,7 +304,7 @@ function buildMcpServer({
         })
         return toolSuccess(result, formatCallResult(result))
       } catch (error) {
-        if (error instanceof SkaperMcpError) {
+        if (error instanceof DocksMcpError) {
           return toolError(error.code, error.message)
         }
         return toolError(
@@ -317,7 +317,7 @@ function buildMcpServer({
 
   server.registerResource(
     "api-overview",
-    "skaper://api/overview",
+    "docks://api/overview",
     {
       title: `${model.info.title} overview`,
       description: "Markdown overview of the represented API.",
@@ -336,7 +336,7 @@ function buildMcpServer({
 
   server.registerResource(
     "openapi-document",
-    "skaper://api/openapi",
+    "docks://api/openapi",
     {
       title: `${model.info.title} OpenAPI`,
       description: "The original OpenAPI document as JSON.",
@@ -355,10 +355,10 @@ function buildMcpServer({
 
   server.registerResource(
     "api-operation",
-    new ResourceTemplate("skaper://api/operations/{operation}", {
+    new ResourceTemplate("docks://api/operations/{operation}", {
       list: async () => ({
         resources: (await getModel()).operations.map((operation) => ({
-          uri: `skaper://api/operations/${encodeURIComponent(operation.key)}`,
+          uri: `docks://api/operations/${encodeURIComponent(operation.key)}`,
           name: operation.key,
           title: operation.summary,
           description: `${operation.method} ${operation.path}`,
@@ -429,7 +429,7 @@ async function loadOpenApi(source, configuredHeaders) {
     rawDocument = structuredClone(source)
   } else {
     throw new TypeError(
-      "Skaper MCP openapi must be an HTTP URL, local file path, URL, or plain object."
+      "Docks MCP openapi must be an HTTP URL, local file path, URL, or plain object."
     )
   }
 
@@ -601,14 +601,14 @@ function validateOpenApiDocument(document) {
     throw new Error("OpenAPI document must be an object.")
   }
   if (typeof document.swagger === "string") {
-    throw new Error("Swagger 2 documents are not supported by Skaper MCP.")
+    throw new Error("Swagger 2 documents are not supported by Docks MCP.")
   }
   if (
     typeof document.openapi !== "string" ||
     (!document.openapi.startsWith("3.0.") &&
       !document.openapi.startsWith("3.1."))
   ) {
-    throw new Error("Skaper MCP requires an OpenAPI 3.0 or 3.1 document.")
+    throw new Error("Docks MCP requires an OpenAPI 3.0 or 3.1 document.")
   }
   if (
     !isPlainObject(document.info) ||
@@ -1081,15 +1081,15 @@ async function executeOperation({
 }) {
   const operation = resolveOperation(model, operationName)
   if (!operation) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "OPERATION_NOT_FOUND",
       `No API operation matches ${JSON.stringify(operationName)}.`
     )
   }
   if (!operation.executable) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "UNSUPPORTED_OPERATION",
-      "SSE and WebSocket operations are discoverable but cannot be executed by Skaper MCP."
+      "SSE and WebSocket operations are discoverable but cannot be executed by Docks MCP."
     )
   }
   if (
@@ -1100,7 +1100,7 @@ async function executeOperation({
       execution.allowedOperations.has(operation.operationId)
     )
   ) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "OPERATION_NOT_ALLOWED",
       `${operation.key} is not allowed by the MCP host.`
     )
@@ -1110,7 +1110,7 @@ async function executeOperation({
   if (operation.source === "custom") {
     requestUrl = buildCustomOperationUrl(operation, parameters)
     if (!execution.allowedOrigins.has(requestUrl.origin)) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "ORIGIN_NOT_ALLOWED",
         `${requestUrl.origin} is not allowed by the MCP host.`
       )
@@ -1118,7 +1118,7 @@ async function executeOperation({
   } else {
     const serverUrl = baseUrl ?? operation.server
     if (!serverUrl) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "SERVER_NOT_CONFIGURED",
         "The OpenAPI document does not declare a server. Configure baseUrl to execute operations."
       )
@@ -1168,12 +1168,12 @@ async function executeOperation({
         })
       } catch (error) {
         if (controller.signal.aborted) {
-          throw new SkaperMcpError(
+          throw new DocksMcpError(
             "TIMEOUT",
             `Upstream request exceeded ${execution.timeoutMs} ms.`
           )
         }
-        throw new SkaperMcpError(
+        throw new DocksMcpError(
           "UPSTREAM_ERROR",
           `Upstream request failed: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -1182,14 +1182,14 @@ async function executeOperation({
       const location = response.headers.get("location")
       if (!location || !isRedirect(response.status)) break
       if (redirectCount === 5) {
-        throw new SkaperMcpError(
+        throw new DocksMcpError(
           "UPSTREAM_ERROR",
           "Upstream exceeded the five-redirect limit."
         )
       }
       const nextUrl = new URL(location, currentUrl)
       if (nextUrl.origin !== requestUrl.origin) {
-        throw new SkaperMcpError(
+        throw new DocksMcpError(
           "CROSS_ORIGIN_REDIRECT",
           "Upstream redirected to a different origin; credentials were not forwarded."
         )
@@ -1236,20 +1236,20 @@ function resolveServerBase(serverUrl, sourceLocation) {
     ) {
       resolved = new URL(serverUrl, sourceLocation)
     } else {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "SERVER_NOT_CONFIGURED",
         "A relative OpenAPI server URL requires an HTTP specification URL or an absolute baseUrl."
       )
     }
   }
   if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "SERVER_NOT_CONFIGURED",
       "The API server must use HTTP or HTTPS."
     )
   }
   if (resolved.username || resolved.password) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "SERVER_NOT_CONFIGURED",
       "Credentials in API server URLs are not supported; configure apiHeaders instead."
     )
@@ -1271,7 +1271,7 @@ function buildOperationUrl(base, operation, parameters) {
     )
   }
   if (/\{[^}]+\}/.test(path)) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       "Not all documented path parameters were provided."
     )
@@ -1299,7 +1299,7 @@ function buildCustomOperationUrl(operation, parameters) {
   try {
     url = new URL(rawUrl)
   } catch {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       "Custom API requests require an absolute HTTP(S) URL."
     )
@@ -1309,7 +1309,7 @@ function buildCustomOperationUrl(operation, parameters) {
     url.username ||
     url.password
   ) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       "Custom API URLs must use HTTP(S) and cannot contain credentials."
     )
@@ -1335,7 +1335,7 @@ function assertNoUnresolvedVariables(value) {
   if (value === undefined || value === null) return
   const serialized = typeof value === "string" ? value : JSON.stringify(value)
   if (/\{\{[^{}]+\}\}/.test(serialized)) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "UNRESOLVED_VARIABLE",
       "The custom request contains unresolved workspace variables."
     )
@@ -1354,7 +1354,7 @@ function buildDocumentedHeaders(operation, parameters) {
       value !== undefined &&
       operation.securityHeaderNames.has(parameter.name.toLowerCase())
     ) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "INVALID_INPUT",
         `${parameter.name} is an authentication header and must be configured by the MCP host.`
       )
@@ -1369,7 +1369,7 @@ function buildDocumentedHeaders(operation, parameters) {
     const value = cookieValues[parameter.name]
     validateParameterValue(parameter, value)
     if (value !== undefined) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "INVALID_INPUT",
         "Cookie parameters cannot be supplied by an MCP tool call; configure them as server-side apiHeaders if required."
       )
@@ -1381,7 +1381,7 @@ function buildDocumentedHeaders(operation, parameters) {
 function validateParameterValue(parameter, value) {
   if (value === undefined || value === null || value === "") {
     if (parameter.required) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "INVALID_INPUT",
         `Required ${parameter.in} parameter ${parameter.name} is missing.`
       )
@@ -1390,19 +1390,19 @@ function validateParameterValue(parameter, value) {
   }
   const schema = parameter.schema ?? {}
   if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       `${parameter.name} must be one of: ${schema.enum.join(", ")}.`
     )
   }
   if (schema.type === "array" && !Array.isArray(value)) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       `${parameter.name} must be an array.`
     )
   }
   if (schema.type === "object" && !isPlainObject(value)) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       `${parameter.name} must be an object.`
     )
@@ -1411,13 +1411,13 @@ function validateParameterValue(parameter, value) {
     (schema.type === "integer" || schema.type === "number") &&
     typeof value !== "number"
   ) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       `${parameter.name} must be a number.`
     )
   }
   if (schema.type === "boolean" && typeof value !== "boolean") {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       `${parameter.name} must be a boolean.`
     )
@@ -1502,7 +1502,7 @@ function buildRequestBody(operation, requestedContentType, body) {
   const requestBody = operation.requestBody
   if (body === undefined || body === null) {
     if (requestBody?.required) {
-      throw new SkaperMcpError("INVALID_INPUT", "A request body is required.")
+      throw new DocksMcpError("INVALID_INPUT", "A request body is required.")
     }
     return {}
   }
@@ -1512,13 +1512,13 @@ function buildRequestBody(operation, requestedContentType, body) {
     contentTypes.find((value) => value === "application/json") ??
     contentTypes[0]
   if (!contentType) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       "This operation does not document a request body."
     )
   }
   if (!contentTypes.includes(contentType)) {
-    throw new SkaperMcpError(
+    throw new DocksMcpError(
       "INVALID_INPUT",
       `Unsupported request content type. Use one of: ${contentTypes.join(", ")}.`
     )
@@ -1532,7 +1532,7 @@ function buildRequestBody(operation, requestedContentType, body) {
   }
   if (contentType === "application/x-www-form-urlencoded") {
     if (!isPlainObject(body)) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "INVALID_INPUT",
         "URL-encoded bodies must be objects."
       )
@@ -1549,7 +1549,7 @@ function buildRequestBody(operation, requestedContentType, body) {
   }
   if (contentType === "multipart/form-data") {
     if (!isPlainObject(body)) {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "INVALID_INPUT",
         "Multipart bodies must be objects."
       )
@@ -1557,9 +1557,9 @@ function buildRequestBody(operation, requestedContentType, body) {
     const form = new FormData()
     for (const [key, value] of Object.entries(body)) {
       if (isPlainObject(value) && ("file" in value || "base64" in value)) {
-        throw new SkaperMcpError(
+        throw new DocksMcpError(
           "UNSUPPORTED_OPERATION",
-          "Multipart file uploads are not supported by Skaper MCP v1."
+          "Multipart file uploads are not supported by Docks MCP v1."
         )
       }
       if (Array.isArray(value)) {
@@ -1575,16 +1575,16 @@ function buildRequestBody(operation, requestedContentType, body) {
   }
   if (contentType.startsWith("text/")) {
     if (typeof body !== "string") {
-      throw new SkaperMcpError(
+      throw new DocksMcpError(
         "INVALID_INPUT",
         "Text request bodies must be strings."
       )
     }
     return { contentType, body }
   }
-  throw new SkaperMcpError(
+  throw new DocksMcpError(
     "UNSUPPORTED_OPERATION",
-    `Binary request content type ${contentType} is not supported by Skaper MCP v1.`
+    `Binary request content type ${contentType} is not supported by Docks MCP v1.`
   )
 }
 
@@ -1747,7 +1747,7 @@ function unauthorizedResponse() {
     status: 401,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "www-authenticate": 'Bearer realm="skaper-mcp"',
+      "www-authenticate": 'Bearer realm="docks-mcp"',
     },
   })
 }
@@ -1816,7 +1816,7 @@ function normalizeAllowedOrigin(value) {
 
 function validateOptions(options) {
   if (!options || options.openapi === undefined) {
-    throw new TypeError("createSkaperMcp requires an openapi source.")
+    throw new TypeError("createDocksMcp requires an openapi source.")
   }
   if (options.mcpBearerToken && options.authorizeMcpRequest) {
     throw new TypeError(
@@ -2026,7 +2026,7 @@ function isRedirect(status) {
   )
 }
 
-class SkaperMcpError extends Error {
+class DocksMcpError extends Error {
   constructor(code, message) {
     super(message)
     this.code = code

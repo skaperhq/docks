@@ -1,34 +1,34 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, test, vi } from "vitest"
-import { getRelayedResponseUrl, shouldRelayRequest, skaperFetch } from "./relay"
+import { getRelayedResponseUrl, shouldRelayRequest, docksFetch } from "./relay"
 
 describe("browser relay transport", () => {
   afterEach(() => {
-    globalThis.__SKAPER_RELAY__ = undefined
+    globalThis.__DOCKS_RELAY__ = undefined
     vi.unstubAllGlobals()
   })
 
   test("uses direct fetch for same-origin requests", async () => {
-    globalThis.__SKAPER_RELAY__ = { path: "/docs/_relay", token: "secret" }
+    globalThis.__DOCKS_RELAY__ = { path: "/docs/_relay", token: "secret" }
     const response = new Response("ok")
     const fetchMock = vi.fn().mockResolvedValue(response)
     vi.stubGlobal("fetch", fetchMock)
 
     const target = `${window.location.origin}/api/users`
-    await skaperFetch(target, { method: "GET" })
+    await docksFetch(target, { method: "GET" })
 
     expect(shouldRelayRequest(target)).toBe(false)
     expect(fetchMock).toHaveBeenCalledWith(target, { method: "GET" })
   })
 
   test("encodes cross-origin URL, method, and headers for the relay", async () => {
-    globalThis.__SKAPER_RELAY__ = { path: "/docs/_relay", token: "secret" }
+    globalThis.__DOCKS_RELAY__ = { path: "/docs/_relay", token: "secret" }
     const response = new Response("ok")
     const fetchMock = vi.fn().mockResolvedValue(response)
     vi.stubGlobal("fetch", fetchMock)
 
-    await skaperFetch("https://api.example.com/users", {
+    await docksFetch("https://api.example.com/users", {
       method: "POST",
       headers: { Authorization: "Bearer token" },
       body: '{"name":"Ada"}',
@@ -41,9 +41,9 @@ describe("browser relay transport", () => {
     expect(init.method).toBe("POST")
     expect(init.body).toBe('{"name":"Ada"}')
     const headers = new Headers(init.headers)
-    expect(headers.get("x-skaper-relay-token")).toBe("secret")
+    expect(headers.get("x-docks-relay-token")).toBe("secret")
 
-    const metadata = decodeMetadata(headers.get("x-skaper-relay-request") ?? "")
+    const metadata = decodeMetadata(headers.get("x-docks-relay-request") ?? "")
     expect(metadata).toEqual({
       url: "https://api.example.com/users",
       method: "POST",
@@ -54,7 +54,7 @@ describe("browser relay transport", () => {
   test("keeps the upstream response URL available to the UI", () => {
     const metadata = encodeMetadata({ url: "https://api.example.com/final" })
     const response = new Response("ok", {
-      headers: { "x-skaper-relay-response": metadata },
+      headers: { "x-docks-relay-response": metadata },
     })
 
     expect(

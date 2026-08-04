@@ -10,11 +10,11 @@ type RelayRequestMetadata = {
 }
 
 declare global {
-  var __SKAPER_RELAY__: BrowserRelayConfig | undefined
+  var __DOCKS_RELAY__: BrowserRelayConfig | undefined
 }
 
 export function getBrowserRelayConfig() {
-  return globalThis.__SKAPER_RELAY__
+  return globalThis.__DOCKS_RELAY__
 }
 
 export function shouldRelayRequest(url: string) {
@@ -33,7 +33,7 @@ export function shouldRelayRequest(url: string) {
   return `${targetProtocol}//${target.host}` !== window.location.origin
 }
 
-export async function skaperFetch(
+export async function docksFetch(
   url: string,
   init: RequestInit = {}
 ): Promise<Response> {
@@ -53,8 +53,8 @@ export async function skaperFetch(
       typeof FormData !== "undefined" && init.body instanceof FormData
         ? "multipart/form-data"
         : "application/octet-stream",
-    "x-skaper-relay-request": encodeRelayMetadata(metadata),
-    "x-skaper-relay-token": relay.token,
+    "x-docks-relay-request": encodeRelayMetadata(metadata),
+    "x-docks-relay-token": relay.token,
   })
 
   // Let the browser add the multipart boundary; the server copies that exact
@@ -71,7 +71,7 @@ export async function skaperFetch(
     credentials: "same-origin",
   })
 
-  if (response.headers.has("x-skaper-relay-error")) {
+  if (response.headers.has("x-docks-relay-error")) {
     let message = `Relay request failed (${response.status})`
     try {
       const payload = (await response.json()) as { error?: string }
@@ -134,7 +134,7 @@ export function createRelayWebSocket(
     beginRelayHandshake: () => {
       socket.send(
         JSON.stringify({
-          type: "skaper.connect",
+          type: "docks.connect",
           token: relay.token,
           request: {
             url: target,
@@ -147,8 +147,8 @@ export function createRelayWebSocket(
       if (typeof data !== "string") return false
       try {
         const message = JSON.parse(data) as { type?: unknown; error?: unknown }
-        if (message.type === "skaper.ready") return "ready"
-        if (message.type === "skaper.error") {
+        if (message.type === "docks.ready") return "ready"
+        if (message.type === "docks.error") {
           if (typeof message.error === "string") errorMessage = message.error
           return "error"
         }
@@ -182,7 +182,7 @@ function decodeRelayMetadata(value: string) {
 }
 
 function getRelayResponseMetadata(response: Response) {
-  const encoded = response.headers.get("x-skaper-relay-response")
+  const encoded = response.headers.get("x-docks-relay-response")
   if (!encoded) return undefined
   try {
     return decodeRelayMetadata(encoded) as {

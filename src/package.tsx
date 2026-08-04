@@ -20,7 +20,7 @@ import { WorkspacePage } from "./routes/index"
 import { cn } from "./lib/utils"
 import { getRuntimeWorkspaceId, getWorkspaceStorageKey } from "./lib/workspace"
 
-type SkaperProps = {
+type DocksProps = {
   className?: string
   initialOperationId?: string
   initialPage?: "workspace" | "environment"
@@ -30,17 +30,17 @@ type SkaperProps = {
 }
 
 /**
- * Embeddable Skaper API workspace. It uses IndexedDB by default and can be
+ * Embeddable Docks API workspace. It uses IndexedDB by default and can be
  * mounted anywhere in a React application without requiring the host router.
  */
-export function SkaperApp({
+export function DocksApp({
   className,
   initialOperationId,
   initialPage = "workspace",
   defaultTheme = "system",
   storageAdapter,
   workspaceId = getRuntimeWorkspaceId(),
-}: SkaperProps) {
+}: DocksProps) {
   const [page, setPage] = React.useState(initialPage)
   const [operationId, setOperationId] = React.useState(initialOperationId)
 

@@ -25,7 +25,7 @@ import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH_STORAGE_KEY = "skaper:sidebar-width"
+const SIDEBAR_WIDTH_STORAGE_KEY = "docks:sidebar-width"
 const SIDEBAR_WIDTH_DEFAULT = 256
 const SIDEBAR_WIDTH_MIN = 224
 const SIDEBAR_WIDTH_MAX = 480

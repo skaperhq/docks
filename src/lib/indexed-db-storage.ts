@@ -41,7 +41,7 @@ export function createIndexedDbStorageAdapter(
 ): StorageAdapter {
   const normalizedWorkspaceId = workspaceId.trim()
   if (!normalizedWorkspaceId) {
-    throw new TypeError("Skaper workspaceId must be a non-empty string.")
+    throw new TypeError("Docks workspaceId must be a non-empty string.")
   }
 
   const databaseName = `${DB_NAME_PREFIX}:${encodeURIComponent(normalizedWorkspaceId)}`

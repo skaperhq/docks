@@ -29,8 +29,8 @@ function assertBrowserStorage() {
   }
 }
 
-/** Opens (and, when necessary, upgrades) a Skaper workspace database. */
-export function openSkaperDb(databaseName = DB_NAME) {
+/** Opens (and, when necessary, upgrades) a Docks workspace database. */
+export function openDocksDb(databaseName = DB_NAME) {
   assertBrowserStorage()
 
   let dbPromise = dbPromises.get(databaseName)
@@ -221,7 +221,7 @@ export async function putCollectionWithRequests<TCollection, TRequest>(
   requests: TRequest[],
   databaseName = DB_NAME
 ) {
-  const db = await openSkaperDb(databaseName)
+  const db = await openDocksDb(databaseName)
   return new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(
       [STORE_NAMES.collections, STORE_NAMES.customRequests],
@@ -247,7 +247,7 @@ async function getStore(
   mode: IDBTransactionMode,
   databaseName: string
 ) {
-  const db = await openSkaperDb(databaseName)
+  const db = await openDocksDb(databaseName)
   return db.transaction(storeName, mode).objectStore(storeName)
 }
 

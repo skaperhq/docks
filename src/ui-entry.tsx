@@ -1,15 +1,15 @@
 import * as React from "react"
 import { createRoot } from "react-dom/client"
-import { SkaperApp } from "./package"
+import { DocksApp } from "./package"
 
-const rootElement = document.getElementById("skaper-root")
+const rootElement = document.getElementById("docks-root")
 
 if (!rootElement) {
-  throw new Error("Skaper could not find its root element.")
+  throw new Error("Docks could not find its root element.")
 }
 
 createRoot(rootElement).render(
   <React.StrictMode>
-    <SkaperApp />
+    <DocksApp />
   </React.StrictMode>
 )

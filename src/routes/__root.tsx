@@ -37,12 +37,12 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "Skaper · API Workspace",
+        title: "Docks · API Workspace",
       },
       {
         name: "description",
         content:
-          "Explore OpenAPI documentation, compose requests, and manage environments in Skaper.",
+          "Explore OpenAPI documentation, compose requests, and manage environments in Docks.",
       },
     ],
     links: [
@@ -79,7 +79,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                const theme = localStorage.getItem('skaper:development:ui-theme') || 'system';
+                const theme = localStorage.getItem('docks:development:ui-theme') || 'system';
                 const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 document.documentElement.classList.toggle('dark', isDark);
               } catch (e) {}

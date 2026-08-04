@@ -15,8 +15,8 @@ describe("IndexedDB workspace migration", () => {
 
   test("upgrades legacy SSE records from version 2 to version 3", async () => {
     await createVersionTwoDatabase()
-    const { openSkaperDb } = await import("./indexed-db")
-    const db = await openSkaperDb()
+    const { openDocksDb } = await import("./indexed-db")
+    const db = await openDocksDb()
     const transaction = db.transaction(
       ["custom_requests", "saved_responses"],
       "readonly"
