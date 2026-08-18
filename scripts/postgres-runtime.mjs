@@ -15,13 +15,12 @@ const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000
 const SESSION_CACHE_TTL_MS = 30 * 1000
 const MAX_BODY_BYTES = 2 * 1024 * 1024
 const MUTATING_ACTIONS = new Set([
+  "syncOpenApiSource",
   "saveEnvironment",
   "deleteEnvironment",
   "saveVariable",
   "deleteVariable",
   "bulkSyncEnvironments",
-  "upsertRequestTab",
-  "deleteRequestTab",
   "saveWorkspaceSetting",
   "saveResponse",
   "deleteSavedResponse",
@@ -50,10 +49,112 @@ const migrations = [
     version: "0002_custom_request_folders",
     file: "0002_custom_request_folders.sql",
   },
+  { version: "0003_agent_knowledge", file: "0003_agent_knowledge.sql" },
 ]
 
-export async function migrateDocksPostgres({ client, dryRun = false } = {}) {
-  assertQueryable(client, "migrateDocksPostgres client")
+function isSslCertificateError(error) {
+  if (!error) return false
+  const code = error.code
+  const message = error.message ? String(error.message).toLowerCase() : ""
+  return (
+    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+    code === "SELF_SIGNED_CERT_IN_CHAIN" ||
+    code === "UNABLE_TO_GET_ISSUER_CERT_LOCALLY" ||
+    code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE" ||
+    code === "CERT_HAS_EXPIRED" ||
+    message.includes("self-signed certificate") ||
+    message.includes("self signed certificate") ||
+    message.includes("unable to verify the first certificate")
+  )
+}
+
+async function resolveQueryable(
+  options = {},
+  label = "createDocksPostgres pool"
+) {
+  let pool = options.pool ?? options.client
+  const connectionString =
+    options.connectionString ?? options.postgresUrl ?? options.url
+
+  if (
+    !pool &&
+    typeof connectionString === "string" &&
+    connectionString.trim()
+  ) {
+    const pg = await import("pg")
+    const sslNoVerify =
+      options.sslNoVerify ||
+      process.env.DOCKS_SSL_NO_VERIFY === "true" ||
+      process.env.DOCKS_SSL_NO_VERIFY === "1" ||
+      process.env.PGSSLMODE === "no-verify" ||
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0"
+
+    const poolOptions = { connectionString: connectionString.trim() }
+    if (sslNoVerify) {
+      poolOptions.ssl = { rejectUnauthorized: false }
+    }
+    pool = new pg.Pool(poolOptions)
+
+    if (!sslNoVerify) {
+      const originalQuery = pool.query.bind(pool)
+      let fallbackPool = null
+      pool.query = async function queryWithSslFallback(text, values) {
+        if (fallbackPool) {
+          return fallbackPool.query(text, values)
+        }
+        try {
+          return await originalQuery(text, values)
+        } catch (error) {
+          if (isSslCertificateError(error)) {
+            fallbackPool = new pg.Pool({
+              connectionString: connectionString.trim(),
+              ssl: { rejectUnauthorized: false },
+            })
+            return fallbackPool.query(text, values)
+          }
+          throw error
+        }
+      }
+    }
+  }
+
+  if (pool && typeof pool.query !== "function") {
+    if (typeof pool.unsafe === "function") {
+      const client = pool
+      pool = {
+        query: async (text, values) => {
+          const result = await client.unsafe(text, values)
+          return {
+            rows: Array.isArray(result) ? result : [],
+            rowCount:
+              result.count ?? (Array.isArray(result) ? result.length : 0),
+          }
+        },
+      }
+    } else if (typeof pool.execute === "function") {
+      const client = pool
+      pool = {
+        query: async (text, values) => {
+          const result = await client.execute(text, values)
+          return {
+            rows: Array.isArray(result) ? result : (result.rows ?? []),
+            rowCount:
+              result.rowCount ??
+              result.count ??
+              (Array.isArray(result) ? result.length : 0),
+          }
+        },
+      }
+    }
+  }
+
+  assertQueryable(pool, label)
+  return pool
+}
+
+export async function migrateDocksPostgres(options = {}) {
+  const client = await resolveQueryable(options, "migrateDocksPostgres client")
+  const dryRun = options.dryRun ?? false
   const loaded = await Promise.all(
     migrations.map(async (migration) => {
       const sql = await readFile(
@@ -114,11 +215,13 @@ export async function migrateDocksPostgres({ client, dryRun = false } = {}) {
 }
 
 export async function createDocksPostgres(options = {}) {
-  const { pool } = options
-  assertQueryable(pool, "createDocksPostgres pool")
+  const pool = await resolveQueryable(options, "createDocksPostgres pool")
   const workspaceId = normalizeNonEmpty(options.workspaceId, "workspaceId")
   const path = normalizePath(options.path ?? "/_docks/storage")
-  const password = normalizeNonEmpty(options.password, "password")
+  const password =
+    options.password === undefined
+      ? undefined
+      : normalizeNonEmpty(options.password, "password")
   const sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
   const origin = options.origin
     ? normalizeOrigin(options.origin, "origin")
@@ -127,8 +230,9 @@ export async function createDocksPostgres(options = {}) {
     throw new TypeError("sessionTtlMs must be a positive integer.")
   }
 
+  await migrateDocksPostgres({ client: pool })
   await ensureWorkspace(pool, workspaceId)
-  await synchronizePassword(pool, workspaceId, password)
+  if (password) await synchronizePassword(pool, workspaceId, password)
   const storageAdapter = await createPostgresStorageAdapter({
     pool,
     workspaceId,
@@ -158,17 +262,20 @@ export async function createDocksPostgres(options = {}) {
     workspaceId,
     sessionTtlMs,
     origin,
+    matchAnyPath: options.matchAnyPath === true,
+    passwordProtected: Boolean(password),
     storageAdapter,
   })
   return result
 }
 
-export async function createPostgresStorageAdapter({
-  pool,
-  workspaceId,
-  workspaceExists = false,
-}) {
-  assertQueryable(pool, "createPostgresStorageAdapter pool")
+export async function createPostgresStorageAdapter(options = {}) {
+  const pool = await resolveQueryable(
+    options,
+    "createPostgresStorageAdapter pool"
+  )
+  const workspaceId = options.workspaceId
+  const workspaceExists = options.workspaceExists ?? false
   const scope = normalizeNonEmpty(workspaceId, "workspaceId")
   let workspaceReady = workspaceExists ? Promise.resolve() : null
 
@@ -183,6 +290,51 @@ export async function createPostgresStorageAdapter({
   }
 
   return {
+    async syncOpenApiSource({ data }) {
+      const sourceUrl = normalizeNonEmpty(data?.url, "OpenAPI source url")
+      if (!data?.document || typeof data.document !== "object") {
+        throw new TypeError("OpenAPI source document must be an object.")
+      }
+      if (
+        typeof data.document.openapi !== "string" ||
+        !data.document.info ||
+        typeof data.document.info !== "object" ||
+        !data.document.paths ||
+        typeof data.document.paths !== "object"
+      ) {
+        throw new TypeError(
+          "OpenAPI source document is not a valid OpenAPI document."
+        )
+      }
+      const serialized = json(data.document)
+      if (Buffer.byteLength(serialized) > MAX_BODY_BYTES) {
+        throw new TypeError(
+          "OpenAPI source document exceeds the storage limit."
+        )
+      }
+      const documentHash = createHash("sha256").update(serialized).digest("hex")
+      const existing = await pool.query(
+        "SELECT document_hash FROM skaper.api_sources WHERE workspace_id = $1",
+        [scope]
+      )
+      if (existing.rows[0]?.document_hash === documentHash) {
+        return { success: true, changed: false, documentHash }
+      }
+      await ensureWorkspaceReady()
+      await pool.query(
+        `INSERT INTO skaper.api_sources
+           (workspace_id, source_url, document_hash, document, synced_at)
+         VALUES ($1, $2, $3, $4::jsonb, CURRENT_TIMESTAMP)
+         ON CONFLICT (workspace_id) DO UPDATE SET
+           source_url = EXCLUDED.source_url,
+           document_hash = EXCLUDED.document_hash,
+           document = EXCLUDED.document,
+           synced_at = CURRENT_TIMESTAMP`,
+        [scope, sourceUrl, documentHash, serialized]
+      )
+      return { success: true, changed: true, documentHash }
+    },
+
     async getEnvironments() {
       const result = await pool.query(
         `SELECT environment.id, environment.name, environment.base_url,
@@ -351,14 +503,6 @@ export async function createPostgresStorageAdapter({
       const result = await pool.query(
         `SELECT
            COALESCE((
-             SELECT jsonb_agg(to_jsonb(tab_row) ORDER BY tab_row.position, tab_row.operation_id)
-               FROM (
-                 SELECT operation_id, request_tab, draft, position, updated_at
-                   FROM skaper.request_tabs
-                  WHERE workspace_id = $1
-               ) AS tab_row
-           ), '[]'::jsonb) AS request_tabs,
-           COALESCE((
              SELECT jsonb_agg(to_jsonb(response_row) ORDER BY response_row.created_at DESC)
                FROM (
                  SELECT id, operation_id, method, path, name, status, ok,
@@ -394,7 +538,6 @@ export async function createPostgresStorageAdapter({
         [scope]
       )
       const row = result.rows[0] ?? {}
-      const tabs = parseJson(row.request_tabs) ?? []
       const responses = parseJson(row.saved_responses) ?? []
       const settings = parseJson(row.settings) ?? {}
       const collections = parseJson(row.collections) ?? []
@@ -402,13 +545,6 @@ export async function createPostgresStorageAdapter({
       const settingMap = new Map(Object.entries(settings))
       const persistedHeight = Number(settingMap.get("response_panel_height"))
       return {
-        requestTabs: tabs.map((row) => ({
-          operationId: row.operation_id,
-          requestTab: normalizeRequestTab(row.request_tab),
-          draft: parseJson(row.draft),
-          position: row.position,
-          updatedAt: toIso(row.updated_at),
-        })),
         savedResponses: responses.map(mapSavedResponse),
         collections: collections.map((row) => ({
           id: row.id,
@@ -422,36 +558,6 @@ export async function createPostgresStorageAdapter({
           ? persistedHeight
           : 360,
       }
-    },
-
-    async upsertRequestTab({ data }) {
-      await ensureWorkspaceReady()
-      await pool.query(
-        `INSERT INTO skaper.request_tabs
-           (workspace_id, operation_id, request_tab, draft, position)
-         VALUES ($1, $2, $3, $4::jsonb, $5)
-         ON CONFLICT (workspace_id, operation_id) DO UPDATE SET
-           request_tab = EXCLUDED.request_tab,
-           draft = EXCLUDED.draft,
-           position = EXCLUDED.position,
-           updated_at = CURRENT_TIMESTAMP`,
-        [
-          scope,
-          data.operationId,
-          data.requestTab,
-          json(data.draft),
-          data.position,
-        ]
-      )
-      return { success: true }
-    },
-
-    async deleteRequestTab({ data: operationId }) {
-      await pool.query(
-        "DELETE FROM skaper.request_tabs WHERE workspace_id = $1 AND operation_id = $2",
-        [scope, operationId]
-      )
-      return { success: true }
     },
 
     async saveWorkspaceSetting({ data }) {
@@ -618,6 +724,8 @@ function createStorageHandler({
   workspaceId,
   sessionTtlMs,
   origin,
+  matchAnyPath,
+  passwordProtected,
   storageAdapter,
 }) {
   const sessionCache = new Map()
@@ -635,6 +743,8 @@ function createStorageHandler({
         workspaceId,
         sessionTtlMs,
         origin,
+        matchAnyPath,
+        passwordProtected,
         storageAdapter,
         sessionCache,
       })
@@ -655,8 +765,11 @@ function createStorageHandler({
 
 async function handleStorageRequest(request, context) {
   const url = new URL(request.url)
-  if (url.pathname !== context.path)
+  if (!context.matchAnyPath && url.pathname !== context.path)
     return jsonResponse(404, { error: "Not found" })
+  if (context.matchAnyPath) {
+    context = { ...context, path: url.pathname }
+  }
   if (request.method !== "POST")
     return jsonResponse(405, { error: "Method not allowed" })
   if (!isSameOrigin(request, context.origin)) {
@@ -664,6 +777,14 @@ async function handleStorageRequest(request, context) {
   }
 
   const payload = await readJsonBody(request)
+  if (!context.passwordProtected) {
+    if (payload.action === "session" || payload.action === "login") {
+      return jsonResponse(200, { authenticated: true })
+    }
+    if (payload.action === "logout") {
+      return jsonResponse(200, { authenticated: false })
+    }
+  }
   if (payload.action === "login") {
     if (typeof payload.password !== "string") {
       return jsonResponse(400, { error: "Password is required" })
@@ -710,7 +831,9 @@ async function handleStorageRequest(request, context) {
       ? jsonResponse(200, { authenticated: true })
       : jsonResponse(401, { authenticated: false })
   }
-  if (!authenticated) return jsonResponse(401, { error: "Unauthorized" })
+  if (context.passwordProtected && !authenticated) {
+    return jsonResponse(401, { error: "Unauthorized" })
+  }
 
   if (payload.action === "logout") {
     context.sessionCache.delete(hashTokenKey(token))
@@ -738,6 +861,12 @@ async function handleStorageRequest(request, context) {
     payload.action === "getEnvironments" || payload.action === "getApiWorkspace"
       ? await method.call(context.storageAdapter)
       : await method.call(context.storageAdapter, { data: payload.data })
+  if (
+    MUTATING_ACTIONS.has(payload.action) &&
+    !(payload.action === "syncOpenApiSource" && result?.changed === false)
+  ) {
+    await bumpWorkspaceRevision(context.pool, context.workspaceId)
+  }
   return jsonResponse(200, result)
 }
 
@@ -746,6 +875,16 @@ async function ensureWorkspace(client, workspaceId) {
     `INSERT INTO skaper.workspaces (id)
      VALUES ($1)
      ON CONFLICT (id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP`,
+    [workspaceId]
+  )
+}
+
+async function bumpWorkspaceRevision(client, workspaceId) {
+  await client.query(
+    `UPDATE skaper.workspaces
+        SET revision = revision + 1,
+            updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1`,
     [workspaceId]
   )
 }
@@ -1026,13 +1165,6 @@ async function upsertCustomRequestRow(connection, workspaceId, data) {
       data.updatedAt,
     ]
   )
-}
-
-function normalizeRequestTab(value) {
-  if (value === "Authorization") return "Headers"
-  return ["Docs", "Message", "Params", "Headers", "Body"].includes(value)
-    ? value
-    : "Docs"
 }
 
 function parseJson(value) {

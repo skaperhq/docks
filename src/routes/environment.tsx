@@ -41,7 +41,6 @@ import {
   createCustomRequest,
   deleteCollection,
   deleteCustomRequest,
-  deleteRequestTab,
   deleteSavedResponse,
   getCachedApiSidebarWorkspace,
   getApiWorkspace,
@@ -269,10 +268,7 @@ export function EnvironmentPage({
     )
 
     try {
-      await Promise.all([
-        deleteCustomRequest({ data: request.id }),
-        deleteRequestTab({ data: requestKey }),
-      ])
+      await deleteCustomRequest({ data: request.id })
     } catch (error) {
       console.error("Failed to delete custom request:", error)
       setCustomRequests((requests) => [...requests, request])

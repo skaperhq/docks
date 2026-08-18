@@ -28,7 +28,7 @@ const DOCKS_LOGIN_TEMPLATE = /* HTML */ `
         var(--background);
       color: var(--foreground);
       font-family:
-        "Inter Variable",
+        "DM Sans Variable",
         system-ui,
         -apple-system,
         sans-serif;
@@ -356,6 +356,19 @@ export function createDocksRelay(options) {
   return relay
 }
 
+function extractRequestMethod(context) {
+  if (context?.req?.raw instanceof Request) {
+    return context.req.raw.method
+  }
+  if (context instanceof Request) {
+    return context.method
+  }
+  if (context && typeof context.method === "string") {
+    return context.method
+  }
+  return "GET"
+}
+
 export function docksUI(options) {
   if (!options || typeof options.url !== "string" || !options.url.trim()) {
     throw new TypeError("docksUI requires a non-empty OpenAPI url.")
@@ -365,20 +378,13 @@ export function docksUI(options) {
     throw new TypeError("docksUI password option must be a string.")
   }
 
-  if (
-    options.storage !== undefined &&
-    (!options.storage || options.storage.__docksPostgres !== true)
-  ) {
+  if (options.database !== undefined && typeof options.database !== "string") {
     throw new TypeError(
-      "docksUI storage option must come from createDocksPostgres()."
+      "docksUI database option must be a PostgreSQL database URL string."
     )
   }
 
-  if (options.storage && options.password !== undefined) {
-    throw new TypeError(
-      "Configure PostgreSQL server-side authentication or the browser-only password, not both."
-    )
-  }
+  const rawPostgresUrl = options.database?.trim()
 
   if (
     options.workspaceId !== undefined &&
@@ -400,15 +406,48 @@ export function docksUI(options) {
 
   const workspaceId =
     options.workspaceId?.trim() || createDefaultWorkspaceId(options.url)
-  if (options.storage && options.storage.workspaceId !== workspaceId) {
-    throw new TypeError(
-      "docksUI workspaceId must match the PostgreSQL storage workspaceId."
-    )
-  }
-  const hashedPassword = options.password ? sha256(options.password) : null
-  const html = renderDocksHtml(options, hashedPassword, workspaceId)
 
-  return function docksHandler(context, response) {
+  let storagePromise = null
+  let storageInstance = null
+
+  if (rawPostgresUrl) {
+    storagePromise = import("./postgres-runtime.mjs")
+      .then(({ createDocksPostgres }) =>
+        createDocksPostgres({
+          connectionString: rawPostgresUrl,
+          workspaceId,
+          password: options.password,
+          path: "/",
+          matchAnyPath: true,
+        })
+      )
+      .then((inst) => {
+        storageInstance = inst
+        return inst
+      })
+    storagePromise.catch(() => {})
+  }
+
+  const hashedPassword =
+    options.password && !rawPostgresUrl ? sha256(options.password) : null
+  const htmlOptions = {
+    ...options,
+    storage: rawPostgresUrl
+      ? { __docksPostgres: true, path: "__docks_current__", workspaceId }
+      : undefined,
+  }
+  const html = renderDocksHtml(htmlOptions, hashedPassword, workspaceId)
+
+  return async function docksHandler(context, response) {
+    const method = extractRequestMethod(context)
+
+    if (rawPostgresUrl && method === "POST") {
+      const activeStorage = storageInstance ?? (await storagePromise)
+      if (activeStorage?.handler) {
+        return activeStorage.handler(context, response)
+      }
+    }
+
     if (context && typeof context.html === "function") {
       return context.html(html)
     }
@@ -913,7 +952,10 @@ function renderDocksHtml(options, hashedPassword, workspaceId) {
         try {
           const openApiUrl = ${url};
           const relay = ${serializedRelay};
-          const storagePath = ${serializedStoragePath};
+          const configuredStoragePath = ${serializedStoragePath};
+          const storagePath = configuredStoragePath === "__docks_current__"
+            ? window.location.pathname
+            : configuredStoragePath;
           globalThis.__DOCKS_RELAY__ = relay;
           globalThis.__DOCKS_STORAGE_URL__ = storagePath;
           const resolvedOpenApiUrl = new URL(openApiUrl, window.location.href);
@@ -940,8 +982,27 @@ function renderDocksHtml(options, hashedPassword, workspaceId) {
           if (!response.ok) {
             throw new Error("Unable to load OpenAPI document (" + response.status + ")");
           }
-          globalThis.__DOCKS_OPENAPI_SPEC__ = await response.json();
+          const openApiDocument = await response.json();
+          globalThis.__DOCKS_OPENAPI_SPEC__ = openApiDocument;
           globalThis.__DOCKS_WORKSPACE_ID__ = workspaceId;
+          if (storagePath) {
+            const syncResponse = await fetch(storagePath, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "syncOpenApiSource",
+                data: {
+                  url: resolvedOpenApiUrl.toString(),
+                  document: openApiDocument,
+                },
+              }),
+            });
+            if (!syncResponse.ok) {
+              const syncPayload = await syncResponse.json().catch(() => ({}));
+              throw new Error(syncPayload.error || "Unable to persist OpenAPI knowledge");
+            }
+          }
           ${UI_SCRIPT}
         } catch (error) {
           const root = document.getElementById("docks-root");
@@ -963,7 +1024,10 @@ function renderDocksHtml(options, hashedPassword, workspaceId) {
       }
 
       const passwordHash = ${hashedPassword ? JSON.stringify(hashedPassword) : "null"};
-      const remoteStoragePath = ${serializedStoragePath};
+      const configuredRemoteStoragePath = ${serializedStoragePath};
+      const remoteStoragePath = configuredRemoteStoragePath === "__docks_current__"
+        ? window.location.pathname
+        : configuredRemoteStoragePath;
 
       if (remoteStoragePath) {
         authenticateRemoteStorage();
@@ -1045,7 +1109,8 @@ function renderDocksHtml(options, hashedPassword, workspaceId) {
 
       async function remoteAuthRequest(payload) {
         try {
-          return await fetch(remoteStoragePath, {
+          const targetUrl = new URL(remoteStoragePath, window.location.href).toString();
+          return await fetch(targetUrl, {
             method: "POST",
             credentials: "same-origin",
             headers: { "content-type": "application/json" },

@@ -37,8 +37,6 @@ export function createHttpStorageAdapter(url: string): StorageAdapter {
     deleteVariable: ({ data }) => call("deleteVariable", data),
     bulkSyncEnvironments: ({ data }) => call("bulkSyncEnvironments", data),
     getApiWorkspace: () => call("getApiWorkspace"),
-    upsertRequestTab: ({ data }) => call("upsertRequestTab", data),
-    deleteRequestTab: ({ data }) => call("deleteRequestTab", data),
     saveWorkspaceSetting: ({ data }) => call("saveWorkspaceSetting", data),
     saveResponse: ({ data }) => call("saveResponse", data),
     deleteSavedResponse: ({ data }) => call("deleteSavedResponse", data),

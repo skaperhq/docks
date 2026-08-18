@@ -34,4 +34,23 @@ describe("RequestTabStrip", () => {
     fireEvent.click(screen.getByLabelText("Close /one tab"))
     expect(onCloseOperation).toHaveBeenCalledWith("one")
   })
+
+  test("adds stable ordinals when the same request is opened repeatedly", () => {
+    render(
+      <RequestTabStrip
+        activeOperationId="users-2"
+        operations={[
+          { id: "users-1", method: "GET", displayPath: "users" },
+          { id: "users-2", method: "GET", displayPath: "users" },
+          { id: "users-3", method: "GET", displayPath: "users" },
+        ]}
+        onSelectOperation={vi.fn()}
+        onCloseOperation={vi.fn()}
+      />
+    )
+
+    expect(screen.getByLabelText("Open users tab")).toBeTruthy()
+    expect(screen.getByLabelText("Open users (2) tab")).toBeTruthy()
+    expect(screen.getByLabelText("Open users (3) tab")).toBeTruthy()
+  })
 })

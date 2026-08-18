@@ -1,4 +1,12 @@
-import { chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises"
+import {
+  chmod,
+  copyFile,
+  cp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises"
 import { resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
@@ -16,6 +24,7 @@ if (uiScript.includes("process.env")) {
   )
 }
 
+await rm(outputDirectory, { recursive: true, force: true })
 await mkdir(outputDirectory, { recursive: true })
 
 const safeScript = uiScript.replaceAll("</script", "<\\/script")
@@ -57,16 +66,25 @@ const commonJsModule = serverModule
     "module.exports = docksUI\nmodule.exports.docksUI = docksUI\nmodule.exports.createDocksRelay = createDocksRelay"
   )
 
-await writeFile(resolve(outputDirectory, "index.js"), serverModule)
-await writeFile(resolve(outputDirectory, "index.cjs"), commonJsModule)
-
-await copyFile(
-  resolve(root, "scripts/mcp-runtime.mjs"),
-  resolve(outputDirectory, "mcp.js")
+const esmServerModule = serverModule.replaceAll(
+  '"./postgres-runtime.mjs"',
+  '"./postgres.js"'
 )
+const cjsServerModule = commonJsModule.replaceAll(
+  '"./postgres-runtime.mjs"',
+  '"./postgres.js"'
+)
+
+await writeFile(resolve(outputDirectory, "index.js"), esmServerModule)
+await writeFile(resolve(outputDirectory, "index.cjs"), cjsServerModule)
+
 await copyFile(
   resolve(root, "scripts/postgres-runtime.mjs"),
   resolve(outputDirectory, "postgres.js")
+)
+await copyFile(
+  resolve(root, "scripts/knowledge-runtime.mjs"),
+  resolve(outputDirectory, "knowledge.js")
 )
 await mkdir(resolve(outputDirectory, "migrations"), { recursive: true })
 await copyFile(
@@ -77,19 +95,20 @@ await copyFile(
   resolve(root, "migrations/0002_custom_request_folders.sql"),
   resolve(outputDirectory, "migrations/0002_custom_request_folders.sql")
 )
-const mcpCli = await readFile(resolve(root, "scripts/mcp-cli.mjs"), "utf8")
+await copyFile(
+  resolve(root, "migrations/0003_agent_knowledge.sql"),
+  resolve(outputDirectory, "migrations/0003_agent_knowledge.sql")
+)
+const cli = await readFile(resolve(root, "scripts/cli.mjs"), "utf8")
 await writeFile(
   resolve(outputDirectory, "cli.js"),
-  mcpCli
-    .replace('from "./mcp-runtime.mjs"', 'from "./mcp.js"')
+  cli
+    .replace('from "./knowledge-runtime.mjs"', 'from "./knowledge.js"')
     .replace('from "./postgres-runtime.mjs"', 'from "./postgres.js"')
 )
-await writeFile(
-  resolve(outputDirectory, "mcp.cjs"),
-  `"use strict"\n\nexports.createDocksMcp = async function createDocksMcp(options) {\n  const runtime = await import("./mcp.js")\n  return runtime.createDocksMcp(options)\n}\n`
-)
-await writeFile(
-  resolve(outputDirectory, "postgres.cjs"),
-  `"use strict"\n\nexports.createDocksPostgres = async function createDocksPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createDocksPostgres(options)\n}\n\nexports.createPostgresStorageAdapter = async function createPostgresStorageAdapter(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.createPostgresStorageAdapter(options)\n}\n\nexports.migrateDocksPostgres = async function migrateDocksPostgres(options) {\n  const runtime = await import("./postgres.js")\n  return runtime.migrateDocksPostgres(options)\n}\n`
+await cp(
+  resolve(root, "agent-skill/docks"),
+  resolve(outputDirectory, "agent-skill/docks"),
+  { recursive: true }
 )
 await chmod(resolve(outputDirectory, "cli.js"), 0o755)

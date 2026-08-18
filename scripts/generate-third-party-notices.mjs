@@ -23,14 +23,12 @@ const bundledUiRoots = [
   "radix-ui",
   "react",
   "react-dom",
-  "shadcn",
   "tailwind-merge",
   "tailwindcss",
   "tw-animate-css",
 ]
 const metadataOnlyRoots = new Set([
   ...Object.keys(rootPackage.dependencies ?? {}),
-  "shadcn",
   "tailwindcss",
   "tw-animate-css",
 ])

@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar"
 import { useEnvironment } from "@/components/environment-provider"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -91,7 +92,6 @@ import {
   createCustomRequest,
   deleteCollection,
   deleteCustomRequest,
-  deleteRequestTab,
   deleteSavedResponse,
   getCachedApiSidebarWorkspace,
   getApiWorkspace,
@@ -100,7 +100,6 @@ import {
   saveWorkspaceSetting,
   setCachedApiSidebarWorkspace,
   upsertCustomRequest,
-  upsertRequestTab,
 } from "@/lib/api-reference-actions"
 import type {
   CreateRequestInput,
@@ -117,10 +116,7 @@ import {
   getRelayedResponseUrl,
   docksFetch,
 } from "@/lib/relay"
-import {
-  createOperationRequestBodyDraft,
-  normalizeOperationRequestDraft,
-} from "@/lib/request-body"
+import { createOperationRequestBodyDraft } from "@/lib/request-body"
 import { buildCurlCommand } from "@/lib/request-curl"
 import { normalizeRequestConfiguration } from "@/lib/request-model"
 import { requestDraftFromSnapshot } from "@/lib/request-snapshot"
@@ -157,6 +153,7 @@ type ActiveStream = {
 }
 type WorkspaceRequest = {
   id: string
+  sourceId: string
   method: string
   displayPath: string
   tag: string
@@ -168,6 +165,12 @@ type WorkspaceRequest = {
   hasEventStreamResponse: boolean
   operation?: (typeof apiOperations)[number]
   customRequest?: PersistedCustomRequest
+}
+
+type RequestInstance = {
+  id: string
+  sourceId: string
+  request: WorkspaceRequest
 }
 
 function App() {
@@ -202,9 +205,10 @@ export function WorkspacePage({
     getCachedApiSidebarWorkspace()
   )
 
-  const [openOperationIds, setOpenOperationIds] = React.useState<string[]>(
-    () => [defaultOperation.id]
-  )
+  const [requestInstances, setRequestInstances] = React.useState<
+    RequestInstance[]
+  >([])
+  const [activeRequestId, setActiveRequestId] = React.useState<string>()
   const [requestDrafts, setRequestDrafts] = React.useState<RequestDraftMap>({})
   const [requestTabByOperation, setRequestTabByOperation] =
     React.useState<RequestTabMap>({})
@@ -228,6 +232,15 @@ export function WorkspacePage({
   const [loadingSavedResponseId, setLoadingSavedResponseId] = React.useState<
     string | null
   >(null)
+  const [dirtyCustomRequestIds, setDirtyCustomRequestIds] = React.useState(
+    () => new Set<string>()
+  )
+  const [savingCustomRequestId, setSavingCustomRequestId] = React.useState<
+    string | null
+  >(null)
+  const [customRequestSaveErrors, setCustomRequestSaveErrors] = React.useState<
+    Partial<Record<string, string>>
+  >({})
   const [responseStateByOperationId, setResponseStateByOperationId] =
     React.useState<ResponseStateMap>({})
   const [
@@ -237,63 +250,15 @@ export function WorkspacePage({
   const [requestSnapshotByOperationId, setRequestSnapshotByOperationId] =
     React.useState<Partial<Record<string, SavedRequestSnapshot>>>({})
   const activeStreamRef = React.useRef<ActiveStream | null>(null)
-  const persistedRequestTabsRef = React.useRef(new Map<string, string>())
-  const pendingRequestTabsRef = React.useRef(
-    new Map<
-      string,
-      {
-        fingerprint: string
-        data: Parameters<typeof upsertRequestTab>[0]["data"]
-      }
-    >()
-  )
-  const savingRequestTabsRef = React.useRef(new Set<string>())
-  const persistedCustomRequestsRef = React.useRef(new Map<string, string>())
-  const pendingCustomRequestsRef = React.useRef(
-    new Map<string, { fingerprint: string; request: PersistedCustomRequest }>()
-  )
-  const savingCustomRequestsRef = React.useRef(new Set<string>())
   const savedResponseLoadRef = React.useRef(0)
-  const selectedOperation = operationId
-    ? apiOperations.find((operation) => operation.id === operationId)
-    : undefined
-  const selectedCustomRequest = operationId?.startsWith("custom:")
-    ? customRequests.find(
-        (request) => getCustomRequestKey(request.id) === operationId
-      )
-    : undefined
-  const selectedRequest = React.useMemo(
-    () =>
-      selectedOperation
-        ? toOperationWorkspaceRequest(selectedOperation)
-        : selectedCustomRequest
-          ? toCustomWorkspaceRequest(selectedCustomRequest)
-          : undefined,
-    [selectedCustomRequest, selectedOperation]
+  const selectedInstance = requestInstances.find(
+    (instance) => instance.id === activeRequestId
   )
-  const selectedRequestId = selectedRequest?.id
-  const selectedRequestInitialDraft = selectedRequest?.customRequest?.draft
+  const selectedRequest = selectedInstance?.request
+  const selectedOperation = selectedRequest?.operation
   const openOperations = React.useMemo(
-    () =>
-      openOperationIds.flatMap((openOperationId) => {
-        const operation = apiOperations.find(
-          (apiOperation) => apiOperation.id === openOperationId
-        )
-        if (operation) {
-          return [toOperationWorkspaceRequest(operation)]
-        }
-
-        if (openOperationId.startsWith("custom:")) {
-          const customRequest = customRequests.find(
-            (request) => getCustomRequestKey(request.id) === openOperationId
-          )
-
-          return customRequest ? [toCustomWorkspaceRequest(customRequest)] : []
-        }
-
-        return []
-      }),
-    [customRequests, openOperationIds]
+    () => requestInstances.map((instance) => instance.request),
+    [requestInstances]
   )
 
   const requestUrl = selectedRequest?.requestUrl ?? defaultOperation.requestUrl
@@ -474,67 +439,23 @@ export function WorkspacePage({
         }
 
         setCustomRequests(workspace.customRequests)
-        const validRequestTabs = workspace.requestTabs.filter((tab) =>
-          isKnownRequestId(tab.operationId, workspace.customRequests)
-        )
-        const persistedOperationIds = validRequestTabs.map(
-          (tab) => tab.operationId
-        )
-        const nextOpenOperationIds = persistedOperationIds.length
-          ? persistedOperationIds
-          : [defaultOperation.id]
         const initialSelectedId =
           operationId && isKnownRequestId(operationId, workspace.customRequests)
             ? operationId
             : undefined
-
-        setOpenOperationIds(
-          initialSelectedId && !nextOpenOperationIds.includes(initialSelectedId)
-            ? [...nextOpenOperationIds, initialSelectedId]
-            : nextOpenOperationIds
-        )
-        const restoredDraftEntries = validRequestTabs.map((tab) => {
-          const operation = apiOperations.find(
-            (item) => item.id === tab.operationId
+        if (initialSelectedId) {
+          const created = createRequestInstance(
+            initialSelectedId,
+            workspace.customRequests
           )
-          const draft = operation
-            ? normalizeOperationRequestDraft(operation, tab.draft)
-            : tab.draft
-
-          return [
-            tab.operationId,
-            {
-              ...draft,
-              headers: restoreGeneratedHeaderTemplates(draft.headers),
-            },
-          ] as const
-        })
-        const restoredDrafts = Object.fromEntries(restoredDraftEntries)
-        setRequestDrafts(restoredDrafts)
-        persistedRequestTabsRef.current = new Map(
-          validRequestTabs.map((tab, index) => [
-            tab.operationId,
-            requestTabFingerprint({
-              operationId: tab.operationId,
-              requestTab: tab.requestTab,
-              draft: restoredDrafts[tab.operationId],
-              position: index,
-            }),
-          ])
-        )
-        setRequestTabByOperation(
-          Object.fromEntries(
-            validRequestTabs.map((tab) => [tab.operationId, tab.requestTab])
-          )
-        )
+          if (created) {
+            setRequestInstances([created.instance])
+            setActiveRequestId(created.instance.id)
+            setRequestDrafts({ [created.instance.id]: created.draft })
+          }
+        }
         setSavedResponses(workspace.savedResponses)
         setCollections(workspace.collections)
-        persistedCustomRequestsRef.current = new Map(
-          workspace.customRequests.map((request) => [
-            request.id,
-            customRequestFingerprint(request),
-          ])
-        )
         setResponsePanelHeight(
           clampResponsePanelHeight(workspace.responsePanelHeight)
         )
@@ -555,84 +476,6 @@ export function WorkspacePage({
   }, [])
 
   React.useEffect(() => {
-    if (!selectedRequestId) {
-      return
-    }
-
-    setRequestDrafts((drafts) =>
-      drafts[selectedRequestId]
-        ? drafts
-        : {
-            ...drafts,
-            [selectedRequestId]:
-              selectedRequestInitialDraft ?? defaultRequestDraft,
-          }
-    )
-    setOpenOperationIds((operationIds) =>
-      operationIds.includes(selectedRequestId)
-        ? operationIds
-        : [...operationIds, selectedRequestId]
-    )
-  }, [defaultRequestDraft, selectedRequestId, selectedRequestInitialDraft])
-
-  React.useEffect(() => {
-    if (!workspaceLoaded) {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      openOperationIds.forEach((openOperationId, index) => {
-        const draft = requestDrafts[openOperationId]
-        if (!draft) {
-          return
-        }
-
-        const data = {
-          operationId: openOperationId,
-          requestTab: requestTabByOperation[openOperationId] ?? "Docs",
-          draft,
-          position: index,
-        }
-        const fingerprint = requestTabFingerprint(data)
-        if (
-          persistedRequestTabsRef.current.get(openOperationId) === fingerprint
-        ) {
-          return
-        }
-        pendingRequestTabsRef.current.set(openOperationId, {
-          fingerprint,
-          data,
-        })
-        void persistLatestRequestTab(openOperationId)
-      })
-    }, 250)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [workspaceLoaded, openOperationIds, requestDrafts, requestTabByOperation])
-
-  React.useEffect(() => {
-    if (!workspaceLoaded) return
-
-    const timeoutId = window.setTimeout(() => {
-      for (const request of customRequests) {
-        const fingerprint = customRequestFingerprint(request)
-        if (
-          persistedCustomRequestsRef.current.get(request.id) === fingerprint
-        ) {
-          continue
-        }
-        pendingCustomRequestsRef.current.set(request.id, {
-          fingerprint,
-          request,
-        })
-        void persistLatestCustomRequest(request.id)
-      }
-    }, 350)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [customRequests, workspaceLoaded])
-
-  React.useEffect(() => {
     if (!workspaceLoaded) return
     setCachedApiSidebarWorkspace({
       collections,
@@ -640,51 +483,6 @@ export function WorkspacePage({
       savedResponses,
     })
   }, [collections, customRequests, savedResponses, workspaceLoaded])
-
-  async function persistLatestRequestTab(requestId: string) {
-    if (savingRequestTabsRef.current.has(requestId)) return
-    savingRequestTabsRef.current.add(requestId)
-    try {
-      for (;;) {
-        const pending = pendingRequestTabsRef.current.get(requestId)
-        if (
-          !pending ||
-          persistedRequestTabsRef.current.get(requestId) === pending.fingerprint
-        ) {
-          return
-        }
-        await upsertRequestTab({ data: pending.data })
-        persistedRequestTabsRef.current.set(requestId, pending.fingerprint)
-      }
-    } catch (error) {
-      console.error("Failed to persist request tab:", error)
-    } finally {
-      savingRequestTabsRef.current.delete(requestId)
-    }
-  }
-
-  async function persistLatestCustomRequest(requestId: string) {
-    if (savingCustomRequestsRef.current.has(requestId)) return
-    savingCustomRequestsRef.current.add(requestId)
-    try {
-      for (;;) {
-        const pending = pendingCustomRequestsRef.current.get(requestId)
-        if (
-          !pending ||
-          persistedCustomRequestsRef.current.get(requestId) ===
-            pending.fingerprint
-        ) {
-          return
-        }
-        await upsertCustomRequest({ data: pending.request })
-        persistedCustomRequestsRef.current.set(requestId, pending.fingerprint)
-      }
-    } catch (error) {
-      console.error("Failed to update custom request:", error)
-    } finally {
-      savingCustomRequestsRef.current.delete(requestId)
-    }
-  }
 
   React.useEffect(() => {
     return () => {
@@ -694,17 +492,67 @@ export function WorkspacePage({
 
   const hasResponsePanel = responseState.status !== "idle"
 
+  function clearCustomRequestSaveError(instanceId: string) {
+    setCustomRequestSaveErrors((errors) => {
+      if (!errors[instanceId]) return errors
+      const next = { ...errors }
+      delete next[instanceId]
+      return next
+    })
+  }
+
   function selectOperation(
-    nextOperationId: string,
-    options: { savedResponse?: boolean } = {}
+    sourceId: string,
+    options: {
+      savedResponse?: boolean
+      draft?: RequestDraft
+      response?: ResponseState
+      snapshot?: SavedRequestSnapshot
+    } = {}
   ) {
+    const created = createRequestInstance(
+      sourceId,
+      customRequests,
+      options.draft
+    )
+    if (!created) return undefined
+
     if (!options.savedResponse) {
       setSelectedSavedResponseId(null)
     }
-    onOperationChange(nextOperationId)
+    setRequestInstances((instances) => [...instances, created.instance])
+    setRequestDrafts((drafts) => ({
+      ...drafts,
+      [created.instance.id]: created.draft,
+    }))
+    if (options.response) {
+      setResponseStateByOperationId((states) => ({
+        ...states,
+        [created.instance.id]: options.response!,
+      }))
+    }
+    if (options.snapshot) {
+      setRequestSnapshotByOperationId((snapshots) => ({
+        ...snapshots,
+        [created.instance.id]: options.snapshot!,
+      }))
+    }
+    setActiveRequestId(created.instance.id)
+    onOperationChange(sourceId)
+    return created.instance.id
+  }
+
+  function activateRequest(instanceId: string) {
+    const instance = requestInstances.find((item) => item.id === instanceId)
+    if (!instance) return
+    setActiveRequestId(instanceId)
+    setSelectedSavedResponseId(null)
+    onOperationChange(instance.sourceId)
   }
 
   function selectOverview() {
+    setActiveRequestId(undefined)
+    setSelectedSavedResponseId(null)
     onOperationChange(undefined)
   }
 
@@ -723,15 +571,7 @@ export function WorkspacePage({
           ).length,
         },
       })
-      persistedCustomRequestsRef.current.set(
-        request.id,
-        customRequestFingerprint(request)
-      )
       setCustomRequests((requests) => [...requests, request])
-      setRequestDrafts((drafts) => ({
-        ...drafts,
-        [getCustomRequestKey(request.id)]: draft,
-      }))
       return request
     } catch (error) {
       console.error("Failed to create custom request:", error)
@@ -752,22 +592,7 @@ export function WorkspacePage({
         },
       })
       setCollections((items) => [...items, imported.collection])
-      for (const request of imported.requests) {
-        persistedCustomRequestsRef.current.set(
-          request.id,
-          customRequestFingerprint(request)
-        )
-      }
       setCustomRequests((requests) => [...requests, ...imported.requests])
-      setRequestDrafts((drafts) => ({
-        ...drafts,
-        ...Object.fromEntries(
-          imported.requests.map((request) => [
-            getCustomRequestKey(request.id),
-            request.draft,
-          ])
-        ),
-      }))
       return imported.requests
     } catch (error) {
       console.error("Failed to import OpenAPI collection:", error)
@@ -781,30 +606,51 @@ export function WorkspacePage({
 
   async function handleDeleteCustomRequest(request: PersistedCustomRequest) {
     const requestKey = getCustomRequestKey(request.id)
-    persistedCustomRequestsRef.current.delete(request.id)
-    pendingCustomRequestsRef.current.delete(request.id)
-    persistedRequestTabsRef.current.delete(requestKey)
-    pendingRequestTabsRef.current.delete(requestKey)
+    const removedInstanceIds = new Set(
+      requestInstances
+        .filter((instance) => instance.sourceId === requestKey)
+        .map((instance) => instance.id)
+    )
     setCustomRequests((requests) =>
       requests.filter((item) => item.id !== request.id)
     )
-    setRequestDrafts((drafts) => {
-      const nextDrafts = { ...drafts }
-      delete nextDrafts[requestKey]
-      return nextDrafts
-    })
-    setOpenOperationIds((operationIds) =>
-      operationIds.filter((id) => id !== requestKey)
+    setRequestInstances((instances) =>
+      instances.filter((instance) => instance.sourceId !== requestKey)
     )
-    if (selectedRequest?.id === requestKey) {
+    setRequestDrafts((drafts) => omitRequestKeys(drafts, removedInstanceIds))
+    setRequestTabByOperation((tabs) =>
+      omitRequestKeys(tabs, removedInstanceIds)
+    )
+    setResponseStateByOperationId((states) =>
+      omitRequestKeys(states, removedInstanceIds)
+    )
+    setWebSocketConnectionStateByOperationId((states) =>
+      omitRequestKeys(states, removedInstanceIds)
+    )
+    setRequestSnapshotByOperationId((snapshots) =>
+      omitRequestKeys(snapshots, removedInstanceIds)
+    )
+    setDirtyCustomRequestIds((ids) => {
+      const next = new Set(ids)
+      for (const id of removedInstanceIds) next.delete(id)
+      return next
+    })
+    setCustomRequestSaveErrors((errors) =>
+      omitRequestKeys(errors, removedInstanceIds)
+    )
+    if (
+      activeStreamRef.current &&
+      removedInstanceIds.has(activeStreamRef.current.id)
+    ) {
+      activeStreamRef.current.close()
+      activeStreamRef.current = null
+    }
+    if (selectedRequest?.sourceId === requestKey) {
       selectOverview()
     }
 
     try {
-      await Promise.all([
-        deleteCustomRequest({ data: request.id }),
-        deleteRequestTab({ data: requestKey }),
-      ])
+      await deleteCustomRequest({ data: request.id })
     } catch (error) {
       console.error("Failed to delete custom request:", error)
       setCustomRequests((requests) => [...requests, request])
@@ -819,13 +665,11 @@ export function WorkspacePage({
       collectionRequests.map((request) => getCustomRequestKey(request.id))
     )
 
-    for (const request of collectionRequests) {
-      const requestKey = getCustomRequestKey(request.id)
-      persistedCustomRequestsRef.current.delete(request.id)
-      pendingCustomRequestsRef.current.delete(request.id)
-      persistedRequestTabsRef.current.delete(requestKey)
-      pendingRequestTabsRef.current.delete(requestKey)
-    }
+    const removedInstanceIds = new Set(
+      requestInstances
+        .filter((instance) => requestKeys.has(instance.sourceId))
+        .map((instance) => instance.id)
+    )
 
     setCollections((items) => items.filter((item) => item.id !== collection.id))
     setCustomRequests((requests) =>
@@ -834,29 +678,39 @@ export function WorkspacePage({
     setSavedResponses((responses) =>
       responses.filter((response) => !requestKeys.has(response.operationId))
     )
-    setOpenOperationIds((operationIds) =>
-      operationIds.filter((id) => !requestKeys.has(id))
+    setRequestInstances((instances) =>
+      instances.filter((instance) => !requestKeys.has(instance.sourceId))
     )
-    setRequestDrafts((drafts) => omitRequestKeys(drafts, requestKeys))
-    setRequestTabByOperation((tabs) => omitRequestKeys(tabs, requestKeys))
+    setRequestDrafts((drafts) => omitRequestKeys(drafts, removedInstanceIds))
+    setRequestTabByOperation((tabs) =>
+      omitRequestKeys(tabs, removedInstanceIds)
+    )
     setResponseStateByOperationId((states) =>
-      omitRequestKeys(states, requestKeys)
+      omitRequestKeys(states, removedInstanceIds)
     )
     setWebSocketConnectionStateByOperationId((states) =>
-      omitRequestKeys(states, requestKeys)
+      omitRequestKeys(states, removedInstanceIds)
     )
     setRequestSnapshotByOperationId((snapshots) =>
-      omitRequestKeys(snapshots, requestKeys)
+      omitRequestKeys(snapshots, removedInstanceIds)
+    )
+    setDirtyCustomRequestIds((ids) => {
+      const next = new Set(ids)
+      for (const id of removedInstanceIds) next.delete(id)
+      return next
+    })
+    setCustomRequestSaveErrors((errors) =>
+      omitRequestKeys(errors, removedInstanceIds)
     )
 
     if (
       activeStreamRef.current &&
-      requestKeys.has(activeStreamRef.current.id)
+      removedInstanceIds.has(activeStreamRef.current.id)
     ) {
       activeStreamRef.current.close()
       activeStreamRef.current = null
     }
-    if (selectedRequest && requestKeys.has(selectedRequest.id)) {
+    if (selectedRequest && requestKeys.has(selectedRequest.sourceId)) {
       selectOverview()
     }
 
@@ -893,23 +747,74 @@ export function WorkspacePage({
       ...updates,
       ...normalizedRequest,
     }
+    if (!selectedRequest) return
 
     if (
       (request.transport !== nextRequest.transport ||
         request.mode !== nextRequest.mode) &&
-      activeStreamRef.current?.id === getCustomRequestKey(request.id)
+      activeStreamRef.current?.id === selectedRequest.id
     ) {
-      activeStreamRef.current.close()
+      const stream = activeStreamRef.current
+      stream.close()
       activeStreamRef.current = null
       setWebSocketConnectionStateByOperationId((states) => ({
         ...states,
-        [getCustomRequestKey(request.id)]: "disconnected",
+        [selectedRequest.id]: "disconnected",
       }))
     }
 
-    setCustomRequests((requests) =>
-      requests.map((item) => (item.id === request.id ? nextRequest : item))
+    setRequestInstances((instances) =>
+      instances.map((instance) =>
+        instance.id === selectedRequest.id
+          ? {
+              ...instance,
+              request: toCustomWorkspaceRequest(nextRequest, instance.id),
+            }
+          : instance
+      )
     )
+    setDirtyCustomRequestIds((ids) => new Set(ids).add(selectedRequest.id))
+    clearCustomRequestSaveError(selectedRequest.id)
+  }
+
+  async function handleSaveCustomRequest() {
+    if (!selectedRequest?.customRequest) return
+    const instanceId = selectedRequest.id
+    const draft =
+      requestDrafts[instanceId] ?? selectedRequest.customRequest.draft
+    setSavingCustomRequestId(instanceId)
+    clearCustomRequestSaveError(instanceId)
+    try {
+      const saved = await upsertCustomRequest({
+        data: { ...selectedRequest.customRequest, draft },
+      })
+      setCustomRequests((requests) =>
+        requests.map((request) => (request.id === saved.id ? saved : request))
+      )
+      setRequestInstances((instances) =>
+        instances.map((instance) =>
+          instance.id === instanceId
+            ? {
+                ...instance,
+                request: toCustomWorkspaceRequest(saved, instanceId),
+              }
+            : instance
+        )
+      )
+      setDirtyCustomRequestIds((ids) => {
+        const next = new Set(ids)
+        next.delete(instanceId)
+        return next
+      })
+    } catch (error) {
+      setCustomRequestSaveErrors((errors) => ({
+        ...errors,
+        [instanceId]:
+          error instanceof Error ? error.message : "Unable to save request.",
+      }))
+    } finally {
+      setSavingCustomRequestId(null)
+    }
   }
 
   function updateCurrentDraft(updater: (draft: RequestDraft) => RequestDraft) {
@@ -925,6 +830,10 @@ export function WorkspacePage({
           defaultRequestDraft
       ),
     }))
+    if (selectedRequest.customRequest) {
+      setDirtyCustomRequestIds((ids) => new Set(ids).add(selectedRequest.id))
+      clearCustomRequestSaveError(selectedRequest.id)
+    }
   }
 
   function handleRequestTabChange(nextTab: RequestTab) {
@@ -939,18 +848,14 @@ export function WorkspacePage({
   }
 
   function handleCloseOperation(closedOperationId: string) {
-    const {
-      openOperationIds: nextOperationIds,
-      nextOperationId,
-      shouldShowOverview,
-    } = getRequestTabCloseResult({
-      openOperationIds,
+    const { nextOperationId, shouldShowOverview } = getRequestTabCloseResult({
+      openOperationIds: requestInstances.map((instance) => instance.id),
       activeOperationId: selectedRequest?.id,
       closedOperationId,
     })
-    setOpenOperationIds(nextOperationIds)
-    persistedRequestTabsRef.current.delete(closedOperationId)
-    pendingRequestTabsRef.current.delete(closedOperationId)
+    setRequestInstances((instances) =>
+      instances.filter((instance) => instance.id !== closedOperationId)
+    )
     setRequestDrafts((drafts) => {
       const nextDrafts = { ...drafts }
       delete nextDrafts[closedOperationId]
@@ -976,16 +881,19 @@ export function WorkspacePage({
       delete nextSnapshots[closedOperationId]
       return nextSnapshots
     })
-    deleteRequestTab({ data: closedOperationId }).catch((error) =>
-      console.error("Failed to delete request tab from IndexedDB:", error)
-    )
+    setDirtyCustomRequestIds((ids) => {
+      const next = new Set(ids)
+      next.delete(closedOperationId)
+      return next
+    })
+    clearCustomRequestSaveError(closedOperationId)
 
     closeActiveStream(activeStreamRef, closedOperationId)
 
     if (shouldShowOverview) {
       selectOverview()
     } else if (nextOperationId) {
-      selectOperation(nextOperationId)
+      activateRequest(nextOperationId)
     }
   }
 
@@ -1003,7 +911,7 @@ export function WorkspacePage({
     try {
       const savedResponse = await saveResponse({
         data: {
-          operationId: selectedRequest.id,
+          operationId: selectedRequest.sourceId,
           method: selectedRequest.method,
           path: selectedRequest.displayPath,
           name,
@@ -1026,11 +934,6 @@ export function WorkspacePage({
     )
     if (selectedSavedResponseId === response.id) {
       setSelectedSavedResponseId(null)
-      setResponseStateByOperationId((states) => {
-        const nextStates = { ...states }
-        delete nextStates[response.operationId]
-        return nextStates
-      })
     }
 
     try {
@@ -1061,40 +964,26 @@ export function WorkspacePage({
     const loadId = savedResponseLoadRef.current + 1
     savedResponseLoadRef.current = loadId
     setLoadingSavedResponseId(response.id)
-    setOpenOperationIds((operationIds) =>
-      operationIds.includes(response.operationId)
-        ? operationIds
-        : [...operationIds, response.operationId]
-    )
     setSelectedSavedResponseId(response.id)
-    selectOperation(response.operationId, { savedResponse: true })
 
     try {
       const savedResponse = await getSavedResponse({ data: response.id })
       if (!savedResponse || savedResponseLoadRef.current !== loadId) {
         return
       }
-      setResponseStateByOperationId((states) => ({
-        ...states,
-        [response.operationId]: {
-          status: "success",
-          result: savedResponse.result,
-        },
-      }))
       const requestSnapshot = savedResponse.requestSnapshot
-      if (requestSnapshot) {
-        setRequestSnapshotByOperationId((snapshots) => ({
-          ...snapshots,
-          [response.operationId]: requestSnapshot,
-        }))
-        setRequestDrafts((drafts) => ({
-          ...drafts,
-          [response.operationId]: {
+      const restoredDraft = requestSnapshot
+        ? {
             ...requestDraftFromSnapshot(requestSnapshot),
             headers: restoreGeneratedHeaderTemplates(requestSnapshot.headers),
-          },
-        }))
-      }
+          }
+        : undefined
+      selectOperation(response.operationId, {
+        savedResponse: true,
+        draft: restoredDraft,
+        response: { status: "success", result: savedResponse.result },
+        snapshot: requestSnapshot ?? undefined,
+      })
     } catch (error) {
       console.error("Failed to load saved response:", error)
     } finally {
@@ -1362,7 +1251,7 @@ export function WorkspacePage({
       <AppSidebar
         activePage="workspace"
         selectedOperationId={selectedOperation?.id ?? null}
-        selectedRequestId={selectedRequest?.id ?? null}
+        selectedRequestId={selectedRequest?.sourceId ?? null}
         savedResponses={savedResponses}
         collections={collections}
         customRequests={customRequests}
@@ -1385,7 +1274,7 @@ export function WorkspacePage({
         <RequestTabStrip
           activeOperationId={selectedRequest?.id ?? ""}
           operations={openOperations}
-          onSelectOperation={(request) => selectOperation(request.id)}
+          onSelectOperation={(request) => activateRequest(request.id)}
           onCloseOperation={handleCloseOperation}
         />
         <ScrollArea className="min-h-0 w-full flex-1">
@@ -1413,6 +1302,16 @@ export function WorkspacePage({
                 onRequestTabChange={handleRequestTabChange}
                 onUpdateDraft={updateCurrentDraft}
                 onUpdateCustomRequest={handleUpdateCustomRequest}
+                customRequestDirty={dirtyCustomRequestIds.has(
+                  selectedRequest.id
+                )}
+                customRequestSaving={
+                  savingCustomRequestId === selectedRequest.id
+                }
+                customRequestSaveError={
+                  customRequestSaveErrors[selectedRequest.id] ?? null
+                }
+                onSaveCustomRequest={handleSaveCustomRequest}
                 curlCommand={requestCurlCommand}
                 pageMarkdown={requestPageMarkdown}
               />
@@ -1474,6 +1373,10 @@ function RequestWorkspace({
   onRequestTabChange,
   onUpdateDraft,
   onUpdateCustomRequest,
+  customRequestDirty,
+  customRequestSaving,
+  customRequestSaveError,
+  onSaveCustomRequest,
   curlCommand,
   pageMarkdown,
 }: {
@@ -1497,6 +1400,10 @@ function RequestWorkspace({
       >
     >
   ) => void
+  customRequestDirty: boolean
+  customRequestSaving: boolean
+  customRequestSaveError: string | null
+  onSaveCustomRequest: () => void
   curlCommand?: string
   pageMarkdown: string
 }) {
@@ -1534,8 +1441,28 @@ function RequestWorkspace({
             <LockIcon className="size-4 text-muted-foreground" />
           ) : null}
         </div>
-        <CopyPageAction markdown={pageMarkdown} title={request.summary} />
+        <div className="flex items-center gap-2">
+          {request.customRequest ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-none font-mono uppercase"
+              disabled={!customRequestDirty || customRequestSaving}
+              onClick={onSaveCustomRequest}
+            >
+              {customRequestSaving ? "Saving..." : "Save changes"}
+            </Button>
+          ) : null}
+          <CopyPageAction markdown={pageMarkdown} title={request.summary} />
+        </div>
       </div>
+
+      {customRequestSaveError ? (
+        <Alert variant="destructive" className="mb-3 rounded-none">
+          <AlertDescription>{customRequestSaveError}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7.5rem] sm:gap-1">
         <div className="flex h-9 min-w-0 overflow-hidden rounded-none border">
@@ -2019,10 +1946,12 @@ function OverviewStat({
 }
 
 function toOperationWorkspaceRequest(
-  operation: (typeof apiOperations)[number]
+  operation: (typeof apiOperations)[number],
+  instanceId = operation.id
 ): WorkspaceRequest {
   return {
-    id: operation.id,
+    id: instanceId,
+    sourceId: operation.id,
     method: operation.method,
     displayPath: operation.displayPath,
     tag: operation.tag,
@@ -2037,10 +1966,12 @@ function toOperationWorkspaceRequest(
 }
 
 function toCustomWorkspaceRequest(
-  request: PersistedCustomRequest
+  request: PersistedCustomRequest,
+  instanceId = getCustomRequestKey(request.id)
 ): WorkspaceRequest {
   return {
-    id: getCustomRequestKey(request.id),
+    id: instanceId,
+    sourceId: getCustomRequestKey(request.id),
     method: request.method,
     displayPath: request.name,
     tag: request.transport === "websocket" ? "WebSocket" : "HTTP",
@@ -2052,6 +1983,55 @@ function toCustomWorkspaceRequest(
     hasEventStreamResponse: request.mode === "sse",
     customRequest: request,
   }
+}
+
+function createRequestInstance(
+  sourceId: string,
+  customRequests: PersistedCustomRequest[],
+  draftOverride?: RequestDraft
+): { instance: RequestInstance; draft: RequestDraft } | undefined {
+  const instanceId = `tab:${createSessionId()}`
+  const operation = apiOperations.find((item) => item.id === sourceId)
+  if (operation) {
+    const request = toOperationWorkspaceRequest(operation, instanceId)
+    return {
+      instance: { id: instanceId, sourceId, request },
+      draft: draftOverride
+        ? cloneRequestDraft(draftOverride)
+        : createDefaultRequestDraft(request),
+    }
+  }
+
+  if (!sourceId.startsWith("custom:")) return undefined
+  const customRequest = customRequests.find(
+    (request) => getCustomRequestKey(request.id) === sourceId
+  )
+  if (!customRequest) return undefined
+  const clonedRequest = structuredClone(customRequest)
+  const request = toCustomWorkspaceRequest(clonedRequest, instanceId)
+  return {
+    instance: { id: instanceId, sourceId, request },
+    draft: cloneRequestDraft(draftOverride ?? customRequest.draft),
+  }
+}
+
+function createDefaultRequestDraft(request: WorkspaceRequest): RequestDraft {
+  return {
+    params: [
+      ...(request.operation?.pathParameters ?? []).map(parameterToRow),
+      ...(request.operation?.queryParameters ?? []).map(parameterToRow),
+    ],
+    headers: request.operation ? getHeaderRows(request.operation) : [],
+    body: createOperationRequestBodyDraft(request.operation),
+  }
+}
+
+function cloneRequestDraft(draft: RequestDraft): RequestDraft {
+  return structuredClone(draft)
+}
+
+function createSessionId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
 }
 
 function getCustomRequestKey(id: string) {
@@ -2549,16 +2529,6 @@ function getDefaultSavedResponseName(
       ? ` - ${responseState.result.status}`
       : ""
   return `${request.method} ${request.displayPath}${status} ${new Date().toLocaleString()}`
-}
-
-function requestTabFingerprint(
-  data: Parameters<typeof upsertRequestTab>[0]["data"]
-) {
-  return JSON.stringify(data)
-}
-
-function customRequestFingerprint(request: PersistedCustomRequest) {
-  return JSON.stringify(request)
 }
 
 function clampResponsePanelHeight(height: number) {

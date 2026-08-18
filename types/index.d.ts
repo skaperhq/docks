@@ -5,22 +5,17 @@ export type DocksUIOptions = {
   title?: string
   /** Optional CSP nonce applied to the embedded style and module script. */
   nonce?: string
-  /** Optional password protecting the UI. */
+  /** Optional password protecting PostgreSQL storage; browser-only mode uses a session lock. */
   password?: string
   /**
    * Stable identifier used to isolate browser storage for this API workspace.
    * Defaults to an identifier derived from the host project and OpenAPI URL.
    */
   workspaceId?: string
-  /** Authenticated PostgreSQL storage returned by createDocksPostgres(). */
-  storage?: DocksRemoteStorage
+  /** Optional PostgreSQL URL. Docks owns pooling, migrations, and storage routing. */
+  database?: string
   /** Optional same-origin relay used for cross-origin API traffic. */
   relay?: DocksRelay
-}
-
-export type DocksRemoteStorage = {
-  readonly path: string
-  readonly workspaceId: string
 }
 
 export type DocksRelayTransport = "http" | "websocket"

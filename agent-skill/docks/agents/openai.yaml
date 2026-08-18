@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docks"
+  short_description: "Build and query API knowledge with controlled actions"
+  default_prompt: "Use $docks to refresh the API knowledge graph, answer this API question, or prepare a controlled upstream action."

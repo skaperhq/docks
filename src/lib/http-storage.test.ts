@@ -17,7 +17,7 @@ describe("authenticated HTTP storage", () => {
 
   test("maps storage calls onto authenticated JSON actions", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ requestTabs: [], customRequests: [] }), {
+      new Response(JSON.stringify({ customRequests: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
       })

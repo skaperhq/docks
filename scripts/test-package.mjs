@@ -2,63 +2,36 @@ import assert from "node:assert/strict"
 import crypto from "node:crypto"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
-import { stat } from "node:fs/promises"
+import { access, readFile, stat } from "node:fs/promises"
 import { WebSocket, WebSocketServer } from "ws"
 import docksUI, {
   createDocksRelay,
   docksUI as namedDocksUI,
 } from "../dist/package/index.js"
-import { createDocksMcp } from "../dist/package/mcp.js"
-import {
-  createDocksPostgres,
-  migrateDocksPostgres,
-} from "../dist/package/postgres.js"
 
 const require = createRequire(import.meta.url)
 const commonJsDocksUI = require("../dist/package/index.cjs")
-const commonJsMcp = require("../dist/package/mcp.cjs")
-const commonJsPostgres = require("../dist/package/postgres.cjs")
 
 assert.equal(docksUI, namedDocksUI)
 assert.equal(commonJsDocksUI, commonJsDocksUI.docksUI)
 assert.equal(typeof createDocksRelay, "function")
 assert.equal(typeof commonJsDocksUI.createDocksRelay, "function")
-assert.equal(typeof createDocksMcp, "function")
-assert.equal(typeof commonJsMcp.createDocksMcp, "function")
-assert.equal(typeof createDocksPostgres, "function")
-assert.equal(typeof migrateDocksPostgres, "function")
-assert.equal(typeof commonJsPostgres.createDocksPostgres, "function")
-assert.equal(typeof commonJsPostgres.createPostgresStorageAdapter, "function")
-assert.equal(typeof commonJsPostgres.migrateDocksPostgres, "function")
-
-const migrationDryRun = await migrateDocksPostgres({
-  client: { query() {} },
-  dryRun: true,
-})
-assert.match(
-  migrationDryRun.sql,
-  /CREATE TABLE IF NOT EXISTS skaper\.custom_requests/
+const packageJson = JSON.parse(await readFile("package.json", "utf8"))
+const packageLock = await readFile("package-lock.json", "utf8")
+const publicTypes = await readFile("types/index.d.ts", "utf8")
+assert.equal(packageJson.exports["./mcp"], undefined)
+assert.equal(packageJson.exports["./postgres"], undefined)
+assert.equal(packageJson.dependencies["@modelcontextprotocol/sdk"], undefined)
+assert.doesNotMatch(packageLock, /modelcontextprotocol/)
+assert.match(publicTypes, /database\?: string/)
+assert.doesNotMatch(publicTypes, /DocksRemoteStorage|storage\?:/)
+await assert.rejects(access(new URL("../dist/package/mcp.js", import.meta.url)))
+await assert.rejects(
+  access(new URL("../dist/package/postgres.cjs", import.meta.url))
 )
-
-const packageMcp = await createDocksMcp({
-  openapi: {
-    openapi: "3.1.0",
-    info: { title: "Package MCP", version: "1.0.0" },
-    paths: {},
-  },
-})
-assert.equal(packageMcp.model.info.title, "Package MCP")
-await packageMcp.close()
-
-const commonJsPackageMcp = await commonJsMcp.createDocksMcp({
-  openapi: {
-    openapi: "3.0.3",
-    info: { title: "CommonJS MCP", version: "1.0.0" },
-    paths: {},
-  },
-})
-assert.equal(commonJsPackageMcp.model.info.title, "CommonJS MCP")
-await commonJsPackageMcp.close()
+await access(
+  new URL("../dist/package/agent-skill/docks/SKILL.md", import.meta.url)
+)
 
 const cliMode = (await stat(new URL("../dist/package/cli.js", import.meta.url)))
   .mode
@@ -69,7 +42,7 @@ const handler = docksUI({
   title: "Example API",
   nonce: "test-nonce",
 })
-const html = handler({ html: (content) => content })
+const html = await handler({ html: (content) => content })
 
 assert.match(html, /^<!doctype html>/)
 assert.match(html, /<title>Example API<\/title>/)
@@ -91,11 +64,18 @@ assert.throws(() => {
 assert.throws(() => {
   docksUI({
     url: "/docs/openapi.json",
+    database: 123,
+  })
+}, TypeError)
+
+assert.throws(() => {
+  docksUI({
+    url: "/docs/openapi.json",
     workspaceId: " ",
   })
 }, TypeError)
 
-const isolatedHtml = docksUI({
+const isolatedHtml = await docksUI({
   url: "/docs/openapi.json",
   workspaceId: "repo-billing",
 })({ html: (content) => content })
@@ -110,14 +90,14 @@ const passwordHandler = docksUI({
   url: "/docs/openapi.json",
   password: "supersecretpassword",
 })
-const passwordHtml = passwordHandler({ html: (content) => content })
+const passwordHtml = await passwordHandler({ html: (content) => content })
 assert.match(passwordHtml, new RegExp(`const passwordHash = "${expectedHash}"`))
 assert.match(passwordHtml, /class=\\"docks-login-container\\"/)
 assert.match(passwordHtml, /id=\\"docks-password-input\\"/)
 
 let expressType
 let expressHtml
-handler(
+await handler(
   {},
   {
     type(value) {
@@ -131,7 +111,7 @@ handler(
 assert.equal(expressType, "html")
 assert.equal(expressHtml, html)
 
-const standardResponse = handler()
+const standardResponse = await handler()
 assert.ok(standardResponse instanceof Response)
 assert.match(standardResponse.headers.get("content-type"), /^text\/html/)
 
@@ -177,7 +157,7 @@ const relay = createDocksRelay({
   path: "/docs/_relay",
   allowedOrigins: [upstreamOrigin],
 })
-const relayHtml = docksUI({
+const relayHtml = await docksUI({
   url: `${upstreamOrigin}/openapi.json`,
   relay,
 })({ html: (content) => content })

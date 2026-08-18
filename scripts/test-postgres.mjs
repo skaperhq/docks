@@ -60,10 +60,23 @@ async function main() {
   assert.deepEqual(dryRun.pending, [
     "0001_initial",
     "0002_custom_request_folders",
+    "0003_agent_knowledge",
   ])
   assert.match(dryRun.sql, /CREATE SCHEMA IF NOT EXISTS skaper/)
 
   const pool = new AuthPool()
+  const unsafeClient = {
+    async unsafe(text, params) {
+      return pool.query(text, params)
+    },
+  }
+  const unsafePostgres = await createDocksPostgres({
+    pool: unsafeClient,
+    workspaceId: "test-workspace-unsafe",
+    password: "correct horse battery staple",
+  })
+  assert.equal(unsafePostgres.__docksPostgres, true)
+
   const postgres = await createDocksPostgres({
     pool,
     workspaceId: "test-workspace",
@@ -72,26 +85,56 @@ async function main() {
     sessionTtlMs: 60_000,
   })
 
-  const html = docksUI({
-    url: "/openapi.json",
-    workspaceId: "test-workspace",
-    storage: postgres,
-  })({ html: (value) => value })
-  assert.match(html, /remoteStoragePath = "\/docs\/_storage"/)
-  assert.doesNotMatch(html, /correct horse battery staple/)
-  assert.equal(html.includes(pool.passwordHash.toString("hex")), false)
   assert.throws(
     () =>
       docksUI({
         url: "/openapi.json",
         workspaceId: "test-workspace",
-        storage: postgres,
-        password: "legacy",
+        database: 123,
       }),
-    /not both/
+    /database option/
   )
 
+  const passwordlessPool = new AuthPool()
+  const passwordless = await createDocksPostgres({
+    pool: passwordlessPool,
+    workspaceId: "passwordless-workspace",
+    path: "/docs/_storage",
+  })
   const endpoint = "http://docs.test/docs/_storage"
+  const passwordlessSession = await passwordless.handler(
+    storageRequest(endpoint, { action: "session" })
+  )
+  assert.equal(passwordlessSession.status, 200)
+  assert.deepEqual(await passwordlessSession.json(), { authenticated: true })
+  const sourceDocument = {
+    openapi: "3.1.0",
+    info: { title: "Knowledge", version: "1.0.0" },
+    paths: {},
+  }
+  const firstSync = await passwordless.handler(
+    storageRequest(endpoint, {
+      action: "syncOpenApiSource",
+      data: {
+        url: "https://api.example/openapi.json",
+        document: sourceDocument,
+      },
+    })
+  )
+  assert.equal(firstSync.status, 200)
+  assert.equal((await firstSync.json()).changed, true)
+  assert.equal(passwordlessPool.revision, 1)
+  const secondSync = await passwordless.handler(
+    storageRequest(endpoint, {
+      action: "syncOpenApiSource",
+      data: {
+        url: "https://api.example/openapi.json",
+        document: sourceDocument,
+      },
+    })
+  )
+  assert.equal((await secondSync.json()).changed, false)
+  assert.equal(passwordlessPool.revision, 1)
   const crossOrigin = await postgres.handler(
     storageRequest(endpoint, { action: "session" }, "https://attacker.test")
   )
@@ -125,7 +168,6 @@ async function main() {
   )
   assert.equal(workspace.status, 200)
   assert.deepEqual(await workspace.json(), {
-    requestTabs: [],
     savedResponses: [],
     collections: [],
     customRequests: [],
@@ -133,7 +175,7 @@ async function main() {
   })
   const workspaceQueries = pool.queries.slice(queriesBeforeWorkspace)
   assert.equal(workspaceQueries.length, 1)
-  assert.match(workspaceQueries[0], /from skaper\.request_tabs/)
+  assert.doesNotMatch(workspaceQueries[0], /from skaper\.request_tabs/)
   assert.doesNotMatch(workspaceQueries[0], /request_snapshot|\bresult\b/)
   assert.equal(
     pool.queries.some((sql) =>
@@ -168,6 +210,9 @@ function storageRequest(url, body, origin = url, cookie) {
 
 class AuthPool {
   credentials
+  migrations = new Set()
+  revision = 0
+  sourceHash
   sessions = new Map()
   queries = []
 
@@ -177,7 +222,37 @@ class AuthPool {
     if (sql === "begin" || sql === "commit" || sql === "rollback") {
       return { rows: [], rowCount: 0 }
     }
+    if (
+      sql.startsWith("select pg_advisory_xact_lock") ||
+      sql.startsWith("create schema if not exists skaper") ||
+      sql.startsWith("create table if not exists skaper.schema_migrations") ||
+      sql.startsWith("alter table skaper.")
+    ) {
+      return { rows: [], rowCount: 0 }
+    }
+    if (sql.startsWith("select version from skaper.schema_migrations")) {
+      return {
+        rows: this.migrations.has(values[0]) ? [{ version: values[0] }] : [],
+      }
+    }
+    if (sql.startsWith("insert into skaper.schema_migrations")) {
+      this.migrations.add(values[0])
+      return { rows: [], rowCount: 1 }
+    }
     if (sql.startsWith("insert into skaper.workspaces")) {
+      return { rows: [], rowCount: 1 }
+    }
+    if (sql.startsWith("select document_hash from skaper.api_sources")) {
+      return {
+        rows: this.sourceHash ? [{ document_hash: this.sourceHash }] : [],
+      }
+    }
+    if (sql.startsWith("insert into skaper.api_sources")) {
+      this.sourceHash = values[2]
+      return { rows: [], rowCount: 1 }
+    }
+    if (sql.startsWith("update skaper.workspaces set revision")) {
+      this.revision += 1
       return { rows: [], rowCount: 1 }
     }
     if (sql.startsWith("select password_salt, password_hash")) {

@@ -10,12 +10,10 @@ import type {
   ApiWorkspaceState,
   PersistedCollection,
   PersistedCustomRequest,
-  PersistedRequestTab,
   PersistedSavedResponse,
   SavedResponseDetail,
 } from "./api-reference-actions"
 import type { EnvironmentInput } from "./environment-actions"
-import type { RequestTab } from "@/components/api-reference/types"
 import type { StorageAdapter } from "./storage-adapter"
 import {
   migrateCustomRequestsV3,
@@ -148,41 +146,26 @@ export function createIndexedDbStorageAdapter(
     },
 
     async getApiWorkspace(): Promise<ApiWorkspaceState> {
-      const [
-        requestTabs,
-        savedResponses,
-        settings,
-        collections,
-        customRequests,
-      ] = await Promise.all([
-        getAllFromStore<PersistedRequestTab>(
-          STORE_NAMES.requestTabs,
-          databaseName
-        ),
-        getAllFromStore<PersistedSavedResponse>(
-          STORE_NAMES.savedResponses,
-          databaseName
-        ),
-        getAllFromStore<WorkspaceSetting>(STORE_NAMES.settings, databaseName),
-        getAllFromStore<PersistedCollection>(
-          STORE_NAMES.collections,
-          databaseName
-        ),
-        getAllFromStore<PersistedCustomRequest>(
-          STORE_NAMES.customRequests,
-          databaseName
-        ),
-      ])
+      const [savedResponses, settings, collections, customRequests] =
+        await Promise.all([
+          getAllFromStore<PersistedSavedResponse>(
+            STORE_NAMES.savedResponses,
+            databaseName
+          ),
+          getAllFromStore<WorkspaceSetting>(STORE_NAMES.settings, databaseName),
+          getAllFromStore<PersistedCollection>(
+            STORE_NAMES.collections,
+            databaseName
+          ),
+          getAllFromStore<PersistedCustomRequest>(
+            STORE_NAMES.customRequests,
+            databaseName
+          ),
+        ])
       const settingMap = new Map(settings.map((item) => [item.key, item.value]))
       const persistedHeight = Number(settingMap.get("response_panel_height"))
 
       return {
-        requestTabs: requestTabs
-          .map((tab) => ({
-            ...tab,
-            requestTab: normalizeRequestTab(tab.requestTab),
-          }))
-          .sort((a, b) => a.position - b.position),
         savedResponses: savedResponses
           .map(migrateSavedResponseV3)
           .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
@@ -195,26 +178,6 @@ export function createIndexedDbStorageAdapter(
           ? persistedHeight
           : DEFAULT_RESPONSE_PANEL_HEIGHT,
       }
-    },
-
-    async upsertRequestTab({ data }) {
-      await putInStore<PersistedRequestTab>(
-        STORE_NAMES.requestTabs,
-        {
-          ...data,
-          requestTab: normalizeRequestTab(data.requestTab),
-          updatedAt: new Date().toISOString(),
-        },
-        databaseName
-      )
-
-      return { success: true }
-    },
-
-    async deleteRequestTab({ data: operationId }) {
-      await deleteFromStore(STORE_NAMES.requestTabs, operationId, databaseName)
-
-      return { success: true }
     },
 
     async saveWorkspaceSetting({ data }) {
@@ -327,24 +290,4 @@ export function createIndexedDbStorageAdapter(
       return { success: true }
     },
   }
-}
-
-function normalizeRequestTab(value: string): RequestTab {
-  // Authorization now lives in the regular headers table. Keep persisted
-  // workspaces usable by moving the retired tab to Headers during hydration.
-  if (value === "Authorization") {
-    return "Headers"
-  }
-
-  if (
-    value === "Docs" ||
-    value === "Message" ||
-    value === "Params" ||
-    value === "Headers" ||
-    value === "Body"
-  ) {
-    return value
-  }
-
-  return "Docs"
 }

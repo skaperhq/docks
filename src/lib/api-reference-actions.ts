@@ -1,7 +1,6 @@
 import { getDocksStorageAdapter } from "./storage-adapter"
 import { normalizeRequestConfiguration } from "./request-model"
 import type {
-  RequestTab,
   ResponseResult,
   SavedRequestSnapshot,
   SavedResponseSummary,
@@ -77,16 +76,7 @@ export type SerializableRequestDraft = {
   }
 }
 
-export type PersistedRequestTab = {
-  operationId: string
-  requestTab: RequestTab
-  draft: SerializableRequestDraft
-  position: number
-  updatedAt: string
-}
-
 export type ApiWorkspaceState = {
-  requestTabs: PersistedRequestTab[]
   savedResponses: SavedResponseSummary[]
   collections: PersistedCollection[]
   customRequests: PersistedCustomRequest[]
@@ -108,13 +98,6 @@ export type PersistedCollectionImport = {
 export type SavedResponseDetail = SavedResponseSummary & {
   requestSnapshot: SavedRequestSnapshot | null
   result: ResponseResult
-}
-
-export type UpsertRequestTabInput = {
-  operationId: string
-  requestTab: RequestTab
-  draft: SerializableRequestDraft
-  position: number
 }
 
 export type SaveResponseInput = {
@@ -145,22 +128,6 @@ export function setCachedApiSidebarWorkspace(
     collections: workspace.collections,
     customRequests: workspace.customRequests,
   })
-}
-
-export async function upsertRequestTab({
-  data,
-}: {
-  data: UpsertRequestTabInput
-}) {
-  return getDocksStorageAdapter().upsertRequestTab({ data })
-}
-
-export async function deleteRequestTab({
-  data: operationId,
-}: {
-  data: string
-}) {
-  return getDocksStorageAdapter().deleteRequestTab({ data: operationId })
 }
 
 export async function saveWorkspaceSetting({
@@ -275,9 +242,6 @@ export async function deleteCollection({ data }: { data: string }) {
       .map((response) =>
         storage.deleteSavedResponse({ data: { id: response.id } })
       ),
-    ...requests.map((request) =>
-      storage.deleteRequestTab({ data: `custom:${request.id}` })
-    ),
   ])
   await Promise.all(
     requests.map((request) => storage.deleteCustomRequest({ data: request.id }))

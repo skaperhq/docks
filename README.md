@@ -1,6 +1,6 @@
 # Docks
 
-Docks is a self-contained OpenAPI documentation, API request UI, and MCP server for Node.js routes. Mount the browser workspace in your app or give coding agents and custom agent frameworks controlled access to the same API knowledge.
+Docks is a self-contained OpenAPI documentation and request workspace for Node.js routes. It provides isolated, session-only request tabs, optional shared PostgreSQL persistence, and a project-local agent skill backed by a persistent API knowledge graph. The graph can be built directly from OpenAPI without a database.
 
 ## Install
 
@@ -8,385 +8,121 @@ Docks is a self-contained OpenAPI documentation, API request UI, and MCP server 
 npm install @skaper/docks
 ```
 
-Docks does not require a React component, a CSS import, or static asset hosting in the consuming project.
-
-## Bring your own PostgreSQL
-
-Docks uses browser-scoped IndexedDB by default. To share workspace state and
-custom API knowledge between developers and MCP, initialize any PostgreSQL
-database with the bundled migration command:
-
-```bash
-DATABASE_URL="postgresql://user:password@host/database" \
-  npx @skaper/docks db migrate
-```
-
-Use `--database-url-env DOCKS_DATABASE_URL` to read a differently named
-environment variable, or `--dry-run` to inspect the SQL without connecting.
-Every table is explicitly qualified under the `skaper` schema. PostgreSQL
-requires index names to be unqualified in `CREATE INDEX`; each index targets a
-qualified `skaper` table and is therefore created in that table's schema. The
-migration does not create extensions or alter `public`, other schemas,
-roles, grants, ownership, default privileges, or database settings.
-
-Create one workspace-scoped storage service and reuse it for the UI and MCP:
+Mount the UI with only the OpenAPI URL. Without `database`, Docks uses browser-local IndexedDB.
 
 ```ts
-import { Pool } from "pg"
 import { docksUI } from "@skaper/docks"
-import { createDocksMcp } from "@skaper/docks/mcp"
-import { createDocksPostgres } from "@skaper/docks/postgres"
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-const postgres = await createDocksPostgres({
-  pool,
-  workspaceId: "acme-api",
-  path: "/docs/_storage",
-  password: process.env.DOCKS_UI_PASSWORD!,
-  // Set this when TLS terminates at a reverse proxy.
-  origin: "https://api.example.com",
-})
-
-app.all(postgres.path, postgres.handler)
 app.get(
   "/docs",
   docksUI({
     url: "/openapi.json",
-    workspaceId: "acme-api",
-    storage: postgres,
   })
 )
-
-const mcp = await createDocksMcp({
-  openapi: "/openapi.json",
-  knowledge: postgres,
-  execution: {
-    allowedOrigins: ["https://external.example.com"],
-  },
-})
 ```
 
-The password is verified on the server using a salted `scrypt` hash stored in
-PostgreSQL. Browser sessions use expiring HttpOnly cookies, and changing the
-configured password invalidates existing sessions. Mount both the docs and
-storage path behind the host application's normal rate limiting and network
-controls. Existing IndexedDB data is not imported automatically.
+For a shared workspace and workspace-enriched agent knowledge, pass the PostgreSQL URL directly. Docks owns pooling, idempotent migrations, workspace initialization, and storage routing.
 
-Custom requests become live MCP knowledge under stable `custom:<request-id>`
-keys. They are included in the existing overview, search, detail, resource, and
-call interfaces. Calls require an allowed method and an exact
-`execution.allowedOrigins` entry. Persisted request headers and environment
-secrets are never exposed or sent by MCP; supply credentials with the existing
-server-side `apiHeaders` or controlled forwarding options.
+```ts
+app.all(
+  "/docs",
+  docksUI({
+    url: "/openapi.json",
+    database: process.env.DATABASE_URL,
+    title: "Billing API",
+    password: process.env.DOCKS_PASSWORD,
+  })
+)
+```
 
-## MCP server
+`url` is required. `database`, `title`, `nonce`, `password`, `workspaceId`, and `relay` are optional. If `password` is omitted, the host application is responsible for authentication and rate limiting on the Docks route. The default workspace ID is derived from the OpenAPI URL.
 
-Docks turns an OpenAPI 3.0 or 3.1 document into four stable MCP tools:
+The handler accepts its storage actions as `POST` requests on the same mounted route. Use a route registration that handles both `GET` and `POST` when PostgreSQL is enabled.
 
-- `get_api_overview`
-- `search_api`
-- `get_api_operation`
-- `call_api`
+## Request tabs
 
-It also exposes overview, source document, and operation resources under
-`docks://api/*`. The server accepts JSON or YAML from a local file, an HTTP(S)
-URL, or an object supplied through the library API.
+Every sidebar, search, overview, saved-response, or custom-request selection opens a new Docks tab instance. Drafts, response state, active panels, SSE streams, and WebSockets are isolated by instance and are not restored after reload.
 
-### Add a hosted MCP to VS Code
+Saved custom requests act as templates. Tab edits remain local until **Save changes** is selected. Updating one source does not change its other open clones. Deleting the source closes all derived tabs.
 
-When an API already hosts Docks's Streamable HTTP endpoint, add it to VS Code
-with one command:
+## Agent skill and knowledge graph
+
+Install the project-local `/docks` Agent Skill:
 
 ```bash
-npx @skaper/docks add vscode https://api.example.com/mcp
+npx @skaper/docks install
 ```
 
-Use `--name acme-api` to choose the server name. The command uses VS Code's
-native MCP installer and does not start a local process or require the OpenAPI
-file on the developer's machine. Preview the generated definition without
-installing it with `--dry-run`.
+The default target is `.agents/skills/docks`; use `--global` for `~/.agents/skills/docks`. The installer refuses to replace modified skill files unless `--force` is supplied.
 
-Do not put credentials in the URL or command. Authentication options will be
-configured separately so tokens are not stored in shell history.
-
-### Coding agents and stdio
-
-The CLI defaults to stdio, which is the simplest option for coding agents:
+Project configuration lives at `.docks/config.json`. It stores environment-variable names and allowlists, never credentials:
 
 ```json
 {
-  "mcpServers": {
-    "acme-api": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@skaper/docks",
-        "mcp",
-        "./openapi.yaml",
-        "--api-header-env",
-        "authorization=ACME_API_AUTHORIZATION"
-      ],
-      "env": {
-        "ACME_API_AUTHORIZATION": "Bearer ..."
-      }
-    }
+  "url": null,
+  "databaseUrlEnv": "DATABASE_URL",
+  "workspaceId": null,
+  "knowledgeOutput": "docks-out",
+  "actions": {
+    "allowedOrigins": [],
+    "allowedMethods": ["GET", "HEAD", "OPTIONS"],
+    "allowedOperations": [],
+    "headerEnvironment": {},
+    "timeoutMs": 30000,
+    "maxResponseBytes": 1048576
   }
 }
 ```
 
-Pass server-controlled API credentials from environment variables without
-putting them in model tool arguments:
+Build and query deterministic artifacts:
 
 ```bash
-docks mcp ./openapi.yaml \
-  --api-header-env authorization=ACME_API_AUTHORIZATION
+docks knowledge build --url ./openapi.json
+docks knowledge status
+docks knowledge query "Which operation returns a User?"
+docks knowledge explain getUser
+docks knowledge path getUser User
 ```
 
-Read-only HTTP methods (`GET`, `HEAD`, and `OPTIONS`) are executable by default.
-Enable writes deliberately with repeatable `--allow-method` or
-`--allow-operation` options.
+`--url` accepts an HTTP(S) URL or a project-local JSON/YAML file and saves the source in `.docks/config.json`. A configured `url` selects direct, database-free mode even when `DATABASE_URL` exists in the shell. It can be omitted when one conventional `openapi.*` or `swagger.*` file exists at the project root. PostgreSQL is optional: without it the graph contains OpenAPI operations, schemas, auth schemes, and tags; with it Docks also includes collections, custom requests, environments, non-secret variables, and saved-response metadata.
 
-### Self-hosted Streamable HTTP
+Artifacts are generated atomically under `docks-out/`. Every knowledge command revalidates the source before reading the graph. Direct HTTP sources are fetched with no-cache semantics and rebuilt when the document hash changes; database-backed graphs are rebuilt when the workspace revision changes. `knowledge status` also refreshes stale output and reports whether it rebuilt. Response bodies are excluded unless `--include-response-bodies` is explicitly supplied.
+
+Knowledge commands return compact JSON intended to be consumed directly by agents. `query` returns ranked nodes with operation parameters, response-schema summaries, and relationships; use `explain` with an exact returned node ID for detail and `path` to verify traversal. Agents should not grep generated graph or terminal-output files.
+
+## Controlled upstream actions
+
+Configure exact origins, methods, operations, and environment-backed headers:
 
 ```bash
-export DOCKS_MCP_TOKEN="replace-me"
-
-docks mcp ./openapi.yaml \
-  --transport http \
-  --host 0.0.0.0 \
-  --mcp-token-env DOCKS_MCP_TOKEN
+docks actions configure \
+  --allow-origin https://api.example.com \
+  --allow-operation createInvoice \
+  --header-env authorization=API_AUTHORIZATION
 ```
 
-The endpoint defaults to `http://127.0.0.1:3210/mcp`. Non-loopback servers
-require a bearer token unless `--allow-unauthenticated` is explicitly set.
-For production OAuth, put the endpoint behind your application middleware or an
-OAuth-aware reverse proxy.
-
-### Controlled client header forwarding
-
-Headers received from LangChain or another HTTP MCP client are not forwarded
-automatically. Select and optionally rename each allowed header:
-
-```ts
-import { createDocksMcp } from "@skaper/docks/mcp"
-
-const mcp = await createDocksMcp({
-  openapi: "./openapi.yaml",
-  clientHeaders: {
-    forward: {
-      "x-docks-api-authorization": "authorization",
-      "x-tenant-id": "x-tenant-id",
-    },
-  },
-  apiHeaders: async ({ operation, forwardedHeaders }) => ({
-    "x-api-client": "docks",
-  }),
-})
-```
-
-Use a separate header for the upstream token. The MCP `Authorization` header is
-reserved for authenticating the MCP request and cannot be forwarded:
-
-```py
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
-client = MultiServerMCPClient({
-    "acme": {
-        "transport": "http",
-        "url": "https://mcp.example.com/mcp",
-        "headers": {
-            "Authorization": "Bearer MCP_ACCESS_TOKEN",
-            "X-Docks-API-Authorization": "Bearer UPSTREAM_API_TOKEN",
-            "X-Tenant-ID": "tenant_123",
-        },
-    }
-})
-```
-
-Server-configured `apiHeaders` override forwarded values. Hop-by-hop headers,
-cookies, proxy headers, MCP protocol headers, and forwarding metadata are always
-blocked and credentials are never returned in tool output.
-
-### Mount in Hono or Express
-
-```ts
-import { createDocksMcp } from "@skaper/docks/mcp"
-
-const mcp = await createDocksMcp({
-  openapi: "./openapi.yaml",
-  baseUrl: "https://api.example.com",
-  mcpBearerToken: process.env.DOCKS_MCP_TOKEN,
-})
-
-// Hono / Web Request
-app.all("/mcp", (context) => mcp.fetch(context.req.raw))
-
-// Express / Node HTTP
-expressApp.all("/mcp", mcp.nodeHandler)
-```
-
-`createDocksMcp` also accepts `openapiHeaders`, `allowedHosts`, a custom
-`authorizeMcpRequest`, and execution limits. API calls are restricted to the
-configured or documented server origin, same-origin redirects, a 30-second
-timeout, and a 1 MiB response by default. SSE, WebSocket, binary upload, and
-multipart file execution are intentionally rejected in the first MCP release.
-
-### Container recipe
-
-The package does not publish an official image yet. A minimal deployment can run
-the CLI directly:
-
-```dockerfile
-FROM node:22-alpine
-WORKDIR /app
-COPY openapi.yaml ./openapi.yaml
-RUN npm install --omit=dev @skaper/docks
-EXPOSE 3210
-CMD ["./node_modules/.bin/docks", "mcp", "./openapi.yaml", "--transport", "http", "--host", "0.0.0.0", "--mcp-token-env", "DOCKS_MCP_TOKEN"]
-```
-
-## Hono
-
-```ts
-import { Hono } from "hono"
-import { docksUI } from "@skaper/docks"
-
-const swagger = new Hono()
-
-swagger.get("/", docksUI({ url: "/docs/openapi.json" }))
-```
-
-You can also mount the handler directly on an existing app:
-
-```ts
-app.get("/docs", docksUI({ url: "/docs/openapi.json" }))
-```
-
-## Express
-
-```ts
-import express from "express"
-import { docksUI } from "@skaper/docks"
-
-const app = express()
-
-app.get("/docs", docksUI({ url: "/docs/openapi.json" }))
-```
-
-The configured URL is fetched by the browser, so it can be relative to the host application or an absolute URL with the appropriate CORS policy. For APIs that cannot enable CORS, configure the same-origin relay below.
-
-## Cross-origin relay
-
-The relay is opt-in and restricted to explicitly allowed upstream origins. Docks continues to call same-origin APIs directly; only cross-origin OpenAPI, HTTP, SSE, and WebSocket traffic uses the relay.
-
-### Express
-
-```ts
-import express from "express"
-import { createDocksRelay, docksUI } from "@skaper/docks"
-
-const app = express()
-const relay = createDocksRelay({
-  path: "/docs/_relay",
-  allowedOrigins: ["https://api.example.com"],
-})
-
-app.get(
-  "/docs",
-  docksUI({
-    url: "https://api.example.com/openapi.json",
-    relay,
-  })
-)
-app.post(relay.path, relay.handler)
-
-const server = app.listen(3000)
-server.on("upgrade", (request, socket, head) => {
-  const pathname = new URL(request.url ?? "/", "http://localhost").pathname
-  if (pathname === relay.path) relay.handleUpgrade(request, socket, head)
-})
-```
-
-Mount the relay before catch-all raw body parsers. It uses an opaque request body so normal JSON and URL-encoded parsers do not consume API payloads.
-
-### Hono on Node.js
-
-```ts
-import { serve } from "@hono/node-server"
-import { Hono } from "hono"
-import { createDocksRelay, docksUI } from "@skaper/docks"
-
-const app = new Hono()
-const relay = createDocksRelay({
-  path: "/docs/_relay",
-  allowedOrigins: ["https://api.example.com"],
-})
-
-app.get(
-  "/docs",
-  docksUI({
-    url: "https://api.example.com/openapi.json",
-    relay,
-  })
-)
-app.post(relay.path, relay.handler)
-
-const server = serve({ fetch: app.fetch, port: 3000 })
-server.on("upgrade", (request, socket, head) => {
-  const pathname = new URL(request.url ?? "/", "http://localhost").pathname
-  if (pathname === relay.path) relay.handleUpgrade(request, socket, head)
-})
-```
-
-`app.post(relay.path, relay.handler)` handles only that exact path; it does not intercept application API routes. The upgrade callback must likewise dispatch by pathname when the host already has WebSocket routes.
-
-Allowlist entries are exact origins. An `https://` entry also authorizes the corresponding `wss://` endpoint. Private and localhost origins work when explicitly listed. Dynamic destinations can use `allowDestination`; callback-authorized private networks additionally require `allowPrivateNetwork: true`.
-
-Protect deployed documentation and its relay using the host application's real authentication and rate limiting. The optional Docks UI password is a convenience lock, not server-side authorization.
-
-## Options
-
-```ts
-docksUI({
-  url: "/docs/openapi.json",
-  title: "Acme API",
-  workspaceId: "acme-api",
-  nonce: "your-csp-nonce",
-  relay,
-})
-```
-
-- `url` is required and points to the OpenAPI JSON document.
-- `title` sets the generated HTML document title.
-- `workspaceId` is a stable identifier for this API's browser data. Docks
-  derives one from the host project and OpenAPI URL by default; set it
-  explicitly when multiple apps are launched from the same project directory.
-- `nonce` applies a Content Security Policy nonce to the embedded style and module script.
-- `relay` enables automatic cross-origin execution using a relay returned by `createDocksRelay`.
-
-Docks serves one complete HTML document. Its browser code and visual styles are embedded in that document, so there is no CSS or JavaScript asset for the host application to import or serve.
-
-Without the optional PostgreSQL configuration, request tabs, environments,
-variables, saved responses, and response preferences use a workspace-scoped
-IndexedDB database in the developer's browser. Different repositories do not
-share data even when they reuse the same localhost origin. No server database
-or writable filesystem is required in this default mode.
-
-## Development
+Actions resolve operations from the knowledge graph and cannot accept arbitrary URLs:
 
 ```bash
-npm run dev
-npm run lint
-npm run typecheck
-npm test
+docks action run getInvoice \
+  --parameters-json '{"path":{"id":"inv_123"}}'
 ```
 
-Create an installable tarball with:
+Mutating methods must be allowlisted and require explicit user approval plus `--confirmed-write`. Credentials are read only from configured environment variables and are never stored in arguments, configuration values, graph artifacts, or output. Use `--save-response` only when the result should deliberately be persisted and advance the workspace revision.
+
+SSE, WebSocket, multipart/binary upload, streaming execution, cross-origin redirects, oversized responses, and unsafe agent-supplied headers are rejected.
+
+## Operations
+
+Migrations normally run automatically. For diagnostics or managed deployment workflows:
 
 ```bash
-npm run package
+docks db migrate
+docks db migrate --dry-run
 ```
 
-## License
+All tables remain in the qualified `skaper` schema. The legacy `skaper.request_tabs` table is retained for migration compatibility but is no longer read or written by active adapters.
 
-MIT
+## Relay
+
+`createDocksRelay` remains available for browser requests that must reach exact, explicitly allowed cross-origin destinations. The relay is independent of agent actions and keeps its existing origin, private-network, HTTP, and WebSocket controls.

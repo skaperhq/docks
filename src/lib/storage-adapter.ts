@@ -6,7 +6,6 @@ import type {
   PersistedSavedResponse,
   SavedResponseDetail,
   SaveResponseInput,
-  UpsertRequestTabInput,
 } from "./api-reference-actions"
 import type {
   EnvironmentInput,
@@ -39,10 +38,6 @@ export type StorageAdapter = {
 
   /** Request workspace and response-history persistence. */
   getApiWorkspace: () => Promise<ApiWorkspaceState>
-  upsertRequestTab: (input: {
-    data: UpsertRequestTabInput
-  }) => Promise<{ success: boolean }>
-  deleteRequestTab: (input: { data: string }) => Promise<{ success: boolean }>
   saveWorkspaceSetting: (input: {
     data: { key: string; value: string }
   }) => Promise<{ success: boolean }>

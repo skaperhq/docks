@@ -30,7 +30,6 @@ describe("storage adapter configuration", () => {
     const storage = await import("./storage-adapter")
     const actions = await import("./api-reference-actions")
     const workspace = {
-      requestTabs: [],
       savedResponses: [],
       collections: [
         {
