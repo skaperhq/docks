@@ -4,7 +4,7 @@
   "workspaces": [
     "apps/docs"
   ],
-  "description": "A self-contained OpenAPI workspace and persistent API knowledge graph for developers and AI agents.",
+  "description": "A self-contained OpenAPI documentation and request workspace for Node.js.",
   "license": "MIT",
   "author": "skaper contributors",
   "homepage": "https://github.com/kalidasrajeev1997/docks#readme",
@@ -19,8 +19,6 @@
     "openapi",
     "api-documentation",
     "api-client",
-    "knowledge-graph",
-    "ai-agents",
     "node",
     "hono",
     "express"
@@ -69,11 +67,10 @@
     "prepack": "npm run notices:check && npm run build:package",
     "package": "npm pack --cache /tmp/skaper-ui-npm-cache",
     "test:package": "npm run build:package && node scripts/test-package.mjs",
-    "test:knowledge": "npm run build:package && node scripts/test-knowledge.mjs",
     "test:postgres": "npm run build:package && node scripts/test-postgres.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:integration": "node scripts/test-package.mjs && node scripts/test-knowledge.mjs && node scripts/test-postgres.mjs",
+    "test:integration": "node scripts/test-package.mjs && node scripts/test-postgres.mjs",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\"",
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",

@@ -21,6 +21,19 @@ async function main() {
     folderMigration,
     "0002_custom_request_folders.sql"
   )
+  const dropTabsMigration = await readFile(
+    new URL("../migrations/0003_drop_legacy_request_tabs.sql", import.meta.url),
+    "utf8"
+  )
+  __testing.validateMigrationSql(
+    dropTabsMigration,
+    "0003_drop_legacy_request_tabs.sql"
+  )
+  assert.throws(
+    () =>
+      __testing.validateMigrationSql("DROP TABLE bad;", "bad.sql"),
+    /unqualified/
+  )
   assert.throws(
     () =>
       __testing.validateMigrationSql(
@@ -60,7 +73,7 @@ async function main() {
   assert.deepEqual(dryRun.pending, [
     "0001_initial",
     "0002_custom_request_folders",
-    "0003_agent_knowledge",
+    "0003_drop_legacy_request_tabs",
   ])
   assert.match(dryRun.sql, /CREATE SCHEMA IF NOT EXISTS skaper/)
 
@@ -107,34 +120,6 @@ async function main() {
   )
   assert.equal(passwordlessSession.status, 200)
   assert.deepEqual(await passwordlessSession.json(), { authenticated: true })
-  const sourceDocument = {
-    openapi: "3.1.0",
-    info: { title: "Knowledge", version: "1.0.0" },
-    paths: {},
-  }
-  const firstSync = await passwordless.handler(
-    storageRequest(endpoint, {
-      action: "syncOpenApiSource",
-      data: {
-        url: "https://api.example/openapi.json",
-        document: sourceDocument,
-      },
-    })
-  )
-  assert.equal(firstSync.status, 200)
-  assert.equal((await firstSync.json()).changed, true)
-  assert.equal(passwordlessPool.revision, 1)
-  const secondSync = await passwordless.handler(
-    storageRequest(endpoint, {
-      action: "syncOpenApiSource",
-      data: {
-        url: "https://api.example/openapi.json",
-        document: sourceDocument,
-      },
-    })
-  )
-  assert.equal((await secondSync.json()).changed, false)
-  assert.equal(passwordlessPool.revision, 1)
   const crossOrigin = await postgres.handler(
     storageRequest(endpoint, { action: "session" }, "https://attacker.test")
   )
@@ -211,8 +196,6 @@ function storageRequest(url, body, origin = url, cookie) {
 class AuthPool {
   credentials
   migrations = new Set()
-  revision = 0
-  sourceHash
   sessions = new Map()
   queries = []
 
@@ -226,7 +209,9 @@ class AuthPool {
       sql.startsWith("select pg_advisory_xact_lock") ||
       sql.startsWith("create schema if not exists skaper") ||
       sql.startsWith("create table if not exists skaper.schema_migrations") ||
-      sql.startsWith("alter table skaper.")
+      sql.startsWith("alter table skaper.") ||
+      sql.startsWith("drop table if exists skaper.") ||
+      sql.startsWith("drop table skaper.")
     ) {
       return { rows: [], rowCount: 0 }
     }
@@ -242,17 +227,7 @@ class AuthPool {
     if (sql.startsWith("insert into skaper.workspaces")) {
       return { rows: [], rowCount: 1 }
     }
-    if (sql.startsWith("select document_hash from skaper.api_sources")) {
-      return {
-        rows: this.sourceHash ? [{ document_hash: this.sourceHash }] : [],
-      }
-    }
-    if (sql.startsWith("insert into skaper.api_sources")) {
-      this.sourceHash = values[2]
-      return { rows: [], rowCount: 1 }
-    }
-    if (sql.startsWith("update skaper.workspaces set revision")) {
-      this.revision += 1
+    if (sql.startsWith("update skaper.workspaces set updated_at")) {
       return { rows: [], rowCount: 1 }
     }
     if (sql.startsWith("select password_salt, password_hash")) {
@@ -296,7 +271,6 @@ class AuthPool {
       }
     }
     if (
-      sql.includes("from skaper.request_tabs") ||
       sql.includes("from skaper.saved_responses") ||
       sql.includes("from skaper.workspace_settings") ||
       sql.includes("from skaper.collections") ||

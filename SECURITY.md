@@ -29,9 +29,7 @@ while researching a report.
 
 - The browser-only `docksUI({ password })` option is a convenience lock, not
   authorization. Use host-application authentication for deployed docs.
-- Protect relay, Docks storage, and action execution with normal authentication, rate
+- Protect relay and Docks storage with normal authentication, rate
   limiting, TLS, and network controls.
-- Upstream actions resolve only documented graph operations and remain subject
-  to local origin/method/operation allowlists and explicit write confirmation.
 - Treat OpenAPI documents as code-like input. Only load documents and external
   references from trusted locations.

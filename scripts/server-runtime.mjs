@@ -985,24 +985,6 @@ function renderDocksHtml(options, hashedPassword, workspaceId) {
           const openApiDocument = await response.json();
           globalThis.__DOCKS_OPENAPI_SPEC__ = openApiDocument;
           globalThis.__DOCKS_WORKSPACE_ID__ = workspaceId;
-          if (storagePath) {
-            const syncResponse = await fetch(storagePath, {
-              method: "POST",
-              credentials: "same-origin",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                action: "syncOpenApiSource",
-                data: {
-                  url: resolvedOpenApiUrl.toString(),
-                  document: openApiDocument,
-                },
-              }),
-            });
-            if (!syncResponse.ok) {
-              const syncPayload = await syncResponse.json().catch(() => ({}));
-              throw new Error(syncPayload.error || "Unable to persist OpenAPI knowledge");
-            }
-          }
           ${UI_SCRIPT}
         } catch (error) {
           const root = document.getElementById("docks-root");

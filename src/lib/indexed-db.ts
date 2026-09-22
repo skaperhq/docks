@@ -12,7 +12,6 @@ const DB_VERSION = 3
 
 const STORE_NAMES = {
   environments: "environments",
-  requestTabs: "api_request_tabs",
   savedResponses: "saved_responses",
   settings: "api_workspace_settings",
   collections: "collections",
@@ -46,12 +45,6 @@ export function openDocksDb(databaseName = DB_NAME) {
 
         if (!db.objectStoreNames.contains(STORE_NAMES.environments)) {
           db.createObjectStore(STORE_NAMES.environments, { keyPath: "id" })
-        }
-
-        if (!db.objectStoreNames.contains(STORE_NAMES.requestTabs)) {
-          db.createObjectStore(STORE_NAMES.requestTabs, {
-            keyPath: "operationId",
-          })
         }
 
         if (!db.objectStoreNames.contains(STORE_NAMES.savedResponses)) {

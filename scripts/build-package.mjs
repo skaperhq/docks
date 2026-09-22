@@ -82,10 +82,6 @@ await copyFile(
   resolve(root, "scripts/postgres-runtime.mjs"),
   resolve(outputDirectory, "postgres.js")
 )
-await copyFile(
-  resolve(root, "scripts/knowledge-runtime.mjs"),
-  resolve(outputDirectory, "knowledge.js")
-)
 await mkdir(resolve(outputDirectory, "migrations"), { recursive: true })
 await copyFile(
   resolve(root, "migrations/0001_initial.sql"),
@@ -96,19 +92,12 @@ await copyFile(
   resolve(outputDirectory, "migrations/0002_custom_request_folders.sql")
 )
 await copyFile(
-  resolve(root, "migrations/0003_agent_knowledge.sql"),
-  resolve(outputDirectory, "migrations/0003_agent_knowledge.sql")
+  resolve(root, "migrations/0003_drop_legacy_request_tabs.sql"),
+  resolve(outputDirectory, "migrations/0003_drop_legacy_request_tabs.sql")
 )
 const cli = await readFile(resolve(root, "scripts/cli.mjs"), "utf8")
 await writeFile(
   resolve(outputDirectory, "cli.js"),
-  cli
-    .replace('from "./knowledge-runtime.mjs"', 'from "./knowledge.js"')
-    .replace('from "./postgres-runtime.mjs"', 'from "./postgres.js"')
-)
-await cp(
-  resolve(root, "agent-skill/docks"),
-  resolve(outputDirectory, "agent-skill/docks"),
-  { recursive: true }
+  cli.replace('from "./postgres-runtime.mjs"', 'from "./postgres.js"')
 )
 await chmod(resolve(outputDirectory, "cli.js"), 0o755)

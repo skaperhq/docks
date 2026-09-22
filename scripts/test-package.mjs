@@ -29,8 +29,11 @@ await assert.rejects(access(new URL("../dist/package/mcp.js", import.meta.url)))
 await assert.rejects(
   access(new URL("../dist/package/postgres.cjs", import.meta.url))
 )
-await access(
-  new URL("../dist/package/agent-skill/docks/SKILL.md", import.meta.url)
+await assert.rejects(
+  access(new URL("../dist/package/knowledge.js", import.meta.url))
+)
+await assert.rejects(
+  access(new URL("../dist/package/agent-skill", import.meta.url))
 )
 
 const cliMode = (await stat(new URL("../dist/package/cli.js", import.meta.url)))

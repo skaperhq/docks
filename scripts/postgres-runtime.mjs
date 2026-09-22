@@ -15,7 +15,6 @@ const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000
 const SESSION_CACHE_TTL_MS = 30 * 1000
 const MAX_BODY_BYTES = 2 * 1024 * 1024
 const MUTATING_ACTIONS = new Set([
-  "syncOpenApiSource",
   "saveEnvironment",
   "deleteEnvironment",
   "saveVariable",
@@ -49,7 +48,10 @@ const migrations = [
     version: "0002_custom_request_folders",
     file: "0002_custom_request_folders.sql",
   },
-  { version: "0003_agent_knowledge", file: "0003_agent_knowledge.sql" },
+  {
+    version: "0003_drop_legacy_request_tabs",
+    file: "0003_drop_legacy_request_tabs.sql",
+  },
 ]
 
 function isSslCertificateError(error) {
@@ -290,51 +292,6 @@ export async function createPostgresStorageAdapter(options = {}) {
   }
 
   return {
-    async syncOpenApiSource({ data }) {
-      const sourceUrl = normalizeNonEmpty(data?.url, "OpenAPI source url")
-      if (!data?.document || typeof data.document !== "object") {
-        throw new TypeError("OpenAPI source document must be an object.")
-      }
-      if (
-        typeof data.document.openapi !== "string" ||
-        !data.document.info ||
-        typeof data.document.info !== "object" ||
-        !data.document.paths ||
-        typeof data.document.paths !== "object"
-      ) {
-        throw new TypeError(
-          "OpenAPI source document is not a valid OpenAPI document."
-        )
-      }
-      const serialized = json(data.document)
-      if (Buffer.byteLength(serialized) > MAX_BODY_BYTES) {
-        throw new TypeError(
-          "OpenAPI source document exceeds the storage limit."
-        )
-      }
-      const documentHash = createHash("sha256").update(serialized).digest("hex")
-      const existing = await pool.query(
-        "SELECT document_hash FROM skaper.api_sources WHERE workspace_id = $1",
-        [scope]
-      )
-      if (existing.rows[0]?.document_hash === documentHash) {
-        return { success: true, changed: false, documentHash }
-      }
-      await ensureWorkspaceReady()
-      await pool.query(
-        `INSERT INTO skaper.api_sources
-           (workspace_id, source_url, document_hash, document, synced_at)
-         VALUES ($1, $2, $3, $4::jsonb, CURRENT_TIMESTAMP)
-         ON CONFLICT (workspace_id) DO UPDATE SET
-           source_url = EXCLUDED.source_url,
-           document_hash = EXCLUDED.document_hash,
-           document = EXCLUDED.document,
-           synced_at = CURRENT_TIMESTAMP`,
-        [scope, sourceUrl, documentHash, serialized]
-      )
-      return { success: true, changed: true, documentHash }
-    },
-
     async getEnvironments() {
       const result = await pool.query(
         `SELECT environment.id, environment.name, environment.base_url,
@@ -861,11 +818,8 @@ async function handleStorageRequest(request, context) {
     payload.action === "getEnvironments" || payload.action === "getApiWorkspace"
       ? await method.call(context.storageAdapter)
       : await method.call(context.storageAdapter, { data: payload.data })
-  if (
-    MUTATING_ACTIONS.has(payload.action) &&
-    !(payload.action === "syncOpenApiSource" && result?.changed === false)
-  ) {
-    await bumpWorkspaceRevision(context.pool, context.workspaceId)
+  if (MUTATING_ACTIONS.has(payload.action)) {
+    await touchWorkspace(context.pool, context.workspaceId)
   }
   return jsonResponse(200, result)
 }
@@ -879,11 +833,10 @@ async function ensureWorkspace(client, workspaceId) {
   )
 }
 
-async function bumpWorkspaceRevision(client, workspaceId) {
+async function touchWorkspace(client, workspaceId) {
   await client.query(
     `UPDATE skaper.workspaces
-        SET revision = revision + 1,
-            updated_at = CURRENT_TIMESTAMP
+        SET updated_at = CURRENT_TIMESTAMP
       WHERE id = $1`,
     [workspaceId]
   )
@@ -991,6 +944,13 @@ function validateMigrationSql(sql, file) {
   }
   for (const match of withoutComments.matchAll(
     /CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)/gi
+  )) {
+    if (!match[1].toLowerCase().startsWith("skaper.")) {
+      throw new Error(`${file} contains an unqualified persistent object.`)
+    }
+  }
+  for (const match of withoutComments.matchAll(
+    /DROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([^\s;]+)/gi
   )) {
     if (!match[1].toLowerCase().startsWith("skaper.")) {
       throw new Error(`${file} contains an unqualified persistent object.`)
